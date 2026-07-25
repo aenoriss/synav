@@ -18,32 +18,38 @@ The three axis slices, the oblique cut and the cross-section of the volume are a
 
 ## What it does
 
-- Renders the IXI025 T1 MRI as a raymarched volume (UnityVolumeRendering) with the four segmentation meshes aligned inside it
-- Reslices the voxel grid into axial, coronal and sagittal images that follow the crosshair
+- Renders the IXI025 T1 MRI as a raymarched volume (UnityVolumeRendering)
+- Reslices the voxel grid into axial, coronal and sagittal images that follow the crosshair, each labelled with the slice it is showing
 - Cuts the volume with a plane you can move and rotate, and shows that oblique slice as a fourth image
 - Keeps the cut facing you, so turning the plane around never buries the exposed face
-- Shows and hides skin, gray matter, white matter and veins from a menu
-- Plans a straight entry-to-target trajectory, with depth in true patient millimetres and a colour-coded warning if the track passes inside a safety corridor around a vein
+- Carries skin, gray matter, white matter and veins as labelled voxels inside the scan, coloured in the volume and tinted into every 2D slice, each shown or hidden from a menu
+- Plans a straight entry-to-target trajectory, with depth in true patient millimetres and a warning when the track runs through vessel voxels
+- Holds the entry point on the scalp and lets you drag it over the skull to hunt for an approach that clears the vessels
 - Runs on desktop with mouse and keyboard, or in PCVR with hand tracking, from the same scene
 
 ## How it works
 
 ```mermaid
 flowchart LR
+  M[4 structure meshes] --> Z[StructureVoxelizer<br/>rasterize to label grid]
+  Z --> L[Label volume<br/>one id per voxel]
   P[Section plane<br/>grab and move] --> C[Crosshair<br/>plane centre]
   C --> V[VolumeSampler<br/>world to voxel]
+  L --> V
   V --> A[Axial slice]
   V --> K[Coronal slice]
   V --> S[Sagittal slice]
   P --> O[Oblique reslice<br/>192 x 192]
   P --> X[CutoutBox<br/>cuts the volume]
+  L --> G[Coloured voxels<br/>in the volume]
   O --> B[MPR board]
   A --> B
   K --> B
   S --> B
   C --> T[Trajectory planner<br/>entry / target markers]
   T --> D[Depth, mm]
-  T --> N[Vein safety corridor]
+  T --> N[Corridor vs vessel voxels]
+  L --> N
 ```
 
 ### 1. One coordinate map
@@ -55,7 +61,7 @@ Vector3 local = cube.InverseTransformPoint(world);
 uvw = local + Vector3.one * 0.5f;
 ```
 
-Multiply by the grid dimensions and you have a voxel index. Keeping that in one class is what stops the slice views, the cut and the volume from drifting apart, and it is the seam a label volume would plug into later.
+Multiply by the grid dimensions and you have a voxel index. Keeping that in one class is what stops the slice views, the cut and the volume from drifting apart, and it is where the structure labels plug in: an intensity lookup and a label lookup at one world position are guaranteed to describe the same voxel.
 
 ### 2. The three axis slices
 
@@ -63,7 +69,9 @@ Multiply by the grid dimensions and you have a voxel index. Keeping that in one 
 
 The panels are sized by millimetres, not by voxel count. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so the scan is 240 x 240 x 180 mm and the coronal and sagittal panels are 4:3 while axial is square. Sizing them 256:150 instead squashed the head by about 22%.
 
-Slices are raw voxel intensity mapped straight to grey; the transfer function only shapes the 3D volume. The render is an interpretation, the 2D slices are the evidence.
+Voxel intensity maps straight to grey, tinted toward a structure's colour where one is labelled. Tinting rather than replacing keeps the intensities readable underneath, which is the point of looking at a slice. The transfer function only shapes the 3D volume: the render is an interpretation, the 2D slices are the evidence.
+
+Each panel prints the slice it is showing, one-based out of the stack depth, the way a viewer prints an image number. Reformatted from one volume there is no stored image to number, so it is the reslice index along the axis that view cuts across.
 
 ### 3. The oblique cut
 
@@ -82,11 +90,19 @@ The MPR board's fourth panel is that same texture, not a second sample of the vo
 
 The cutout box is also moved to whichever side of the plane you are standing on each frame, so the open face follows you around.
 
-### 4. Structure filter
+### 4. Structures as voxels
 
-The four meshes are ground truth from the base project, so filtering them is a visibility toggle and nothing more. The menu is a rail of section tabs on the left with the selected section's contents on the right, so the panel stays one size however many sections it grows.
+The four segmentation meshes are rasterized into a single label volume on the MRI's own grid, one integer id per voxel, and handed to UnityVolumeRendering as a secondary volume. The structures are then part of the scan rather than surfaces sitting beside it: they colour the raymarched volume, they tint every 2D slice, and they can be read per voxel.
 
-The meshes are segmentation; the transfer function only changes how the volume looks. Presenting a transfer function preset as if it isolated a structure would be a lie.
+The mapping needs no calibration. `MeshesRoot` carries the same transform as the volume container, so `VolumeSampler.WorldToUVW` takes a mesh vertex straight to the voxel it falls in — every vein vertex lands in a vein voxel.
+
+Reading a structure as voxels rather than as geometry is what makes the trajectory check answer the surgical question directly: *does this track pass through a vessel*, not *how far is the nearest point on a vessel's surface*. The two differ whenever a vessel is thicker than the corridor being tested.
+
+One voxel holds one id, so overlaps are resolved by write order and vessels are written last. Hiding a structure zeroes its colour rather than its data, so a vessel hidden from view is still there for the corridor check.
+
+The bake depends only on the meshes and the grid, both fixed, so it is stored beside the scan as a gzipped byte per voxel — 353 KB, unpacked at startup. The first run in the editor writes it; every run after that reads it.
+
+The menu is a rail of section tabs on the left with the selected section's contents on the right, so the panel stays one size however many sections it grows.
 
 ### 5. Trajectory planning
 
@@ -94,21 +110,27 @@ The meshes are segmentation; the transfer function only changes how the volume l
 
 The two markers are children of the volume in the scene. Grab the head and turn it, and the markers, the line and the readout move with it, the same as the meshes and the MRI do. The depth and the vein warning stay correct too: both are patient-space measurements, so they do not change just because the head was picked up and turned.
 
-The safety corridor turns the track red if it comes within a slider-set millimetre radius of the vein mesh:
+An entry point only means anything on the surface, so setting one projects it onto the scalp: a ray from the head's centre marches the volume's intensity for the air-to-tissue boundary. It marches inward from outside rather than outward from the centre, so an internal air pocket like a sinus is never mistaken for the outside. The marker is grabbable and stays pinned to that surface while dragged, which turns choosing an approach into sliding a point over the skull.
+
+The safety corridor walks the track through the label volume, sampling the centre line and a ring at the corridor radius:
 
 ```csharp
-Vector3 entryMm = sampler.WorldToPatientMm(entry);
-Vector3 targetMm = sampler.WorldToPatientMm(target);
-for (int i = 0; i < veinVerticesMm.Length; i++)
+for (int i = 0; i <= steps; i++)
 {
-    float d = DistanceToSegment(veinVerticesMm[i], entryMm, targetMm, out float t);
-    if (d < nearestMm) { nearestMm = d; nearestT = t; }
+    Vector3 p = entry + axis * ((float)i / steps);
+    if (IsVein(p)) return (float)i / steps;
+
+    for (int k = 0; k < CorridorSamples; k++)
+    {
+        float a = k * Mathf.PI * 2f / CorridorSamples;
+        if (IsVein(p + (across * Mathf.Cos(a) + up * Mathf.Sin(a)) * radiusWorld)) return (float)i / steps;
+    }
 }
 ```
 
-Both the track and every vein vertex go through the same millimetre conversion before the distance check. That matters because IXI025 is anisotropic, 0.9375 x 0.9375 x 1.2 mm per voxel: a single world-to-mm ratio taken along the track's own direction and then applied as a radius in every direction would be off by close to that 28% whenever the nearest vein sits off-axis from the track. Measuring both sides in the same true mm space sidesteps that instead of correcting for it after the fact.
+A track driven through a vessel is a hit outright, rather than a distance that happens to be small; the ring is what keeps the corridor honoured for a track that threads close by without touching.
 
-It walks the mesh's own vertices rather than a physics query, because Unity's concave `MeshCollider` only answers raycasts: there is no `SphereCast` or overlap test that returns a correct in-range result against one.
+The corridor radius is converted through the track's own world-per-millimetre ratio, the same scale the depth readout uses, so the translucent tube drawn around the track is the tube being tested.
 
 ### 6. One pointer, two rigs
 
@@ -122,7 +144,9 @@ if (Input.GetMouseButtonDown(0))
     WhenSelected?.Invoke();
 ```
 
-Everything downstream of the interactor, the buttons, the hover tints, the menus, cannot tell the two apart. `DesktopMode` reads `XRSettings.isDeviceActive` at startup and switches one rig on and the other off.
+Everything downstream of the interactor, the buttons, the hover tints, the menus, cannot tell the two apart. `DesktopMode` picks the rig at startup and switches one on and the other off.
+
+Which rig to pick is a timing question. XR Plug-in Management selects its loader before the scene loads, but the OpenXR session only confirms a frame or more later, later still over Link, so a headset is up long before anything reports it as present. Deciding on presence alone would send a real headset to the desktop rig. With no loader at all there is no XR and it commits to desktop immediately, which is the path the graded build takes; with a loader up it starts on the headset and falls back only if the display never begins presenting.
 
 Panels also carry an inert `RayInteractable` over their whole face. It does nothing when selected, but it gives the pointer something to land on, so the ray stays lit while you travel between buttons instead of blinking off over the gaps. On the MPR board that same backdrop also carries `MouseGrabExempt`, so a desktop click on the images reads as pointing, not grabbing. Everywhere else, an empty click on a panel is a deliberate handle: it drags the panel, or on the section plane, sections the volume.
 
@@ -135,10 +159,11 @@ Download the build and run `NavianChallenge.exe`, or open the project in Unity `
 | Input | Action |
 | - | - |
 | Right-drag | Look around |
-| W A S D, arrows | Move |
+| W A S D | Move |
 | Q / E | Down / up |
 | Shift | Move faster |
 | Wheel | Forward / back |
+| Arrow keys | Angle the cut plane |
 | Left-click | Press a button |
 | Left-drag | Move a panel or the head |
 | Wheel while dragging | Push away / pull closer |
@@ -162,15 +187,18 @@ Build target is Windows x64, Built-in pipeline, and the only scene in the build 
 Assets/NavianChallenge/
   Scenes/NavianChallenge_Main.unity   the whole app
   Data/Atlas/IXI025/                  MRI (.nii.gz) + 4 segmentation meshes
+    Labels/StructureLabels.bytes      the baked label volume, rebuilt if deleted
   Scripts/
     AtlasSceneController.cs           base project's orbit camera, superseded by Desktop/DesktopViewer.cs
     Core/                             works the same regardless of input rig
       VolumeSampler.cs                 world to voxel, the shared coordinate map
       SectionPlane.cs                  binds the cutout, reslices the oblique image
       MprScreens.cs                    the three axis slices + the shared oblique texture
-      TrajectoryPlanner.cs             entry/target depth and the vein safety corridor
+      TrajectoryPlanner.cs             entry/target depth and the corridor check
+      DraggableEntry.cs                holds the entry marker on the scalp while it is dragged
       CorridorSlider.cs                drag slider for the corridor diameter
-      StructureToggles.cs              mesh visibility
+      StructureVoxelizer.cs            rasterizes the meshes into the label volume
+      StructureToggles.cs              structure visibility
       VolumeStyle.cs                   transfer function applied at runtime
       AtlasVolumeLoader.cs             builds the MRI volume at runtime (base project)
     UI/                               interaction primitives both rigs consume
@@ -183,12 +211,14 @@ Assets/NavianChallenge/
       MousePointer.cs                  screen ray + click, as an ISelector
       MouseGrab.cs                     press and drag panels with the mouse
       MouseGrabExempt.cs               marks a surface MouseGrab should never pick up as a handle
+      PlaneRotateInput.cs              arrow keys angle the cut plane
     XR/                               only meaningful with a headset
       WristAnchor.cs                   wrist pose from joint geometry, palm-facing reveal
       WristMenu.cs                     shows and hides the three tools
   Shaders/
     PanelFrame.shader                 SDF rounded frame, stereo instanced
     TrajectoryLine.shader             unlit line drawn on top of the anatomy
+    TrajectoryRay.shader              same, with the per-vertex gradient along the track
   Editor/                             base project's scene-building tools, see note below
 Assets/ThirdParty/UnityVolumeRendering/
 docs/BASE_README.md                   the original base-project README
@@ -212,7 +242,13 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 
 **Explicit sorting orders on the transparent panels.** Unity sorts transparent geometry by distance to camera, which is unreliable when a panel's backing, image, frame and text sit almost on top of each other. Each layer's draw order is set by hand instead of left to the default.
 
-**The vein safety distance is measured in patient millimetres, not a world-unit radius.** A single scalar mm-per-world ratio taken from the track's own direction and applied isotropically would be wrong on an anisotropic scan. Converting both the track and every vein vertex into the same true mm space through `VolumeSampler` sidesteps the anisotropy instead of correcting for it.
+**The corridor is measured in patient millimetres, not world units.** IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so a radius taken in world units is wrong by that anisotropy in whichever direction the nearest vessel happens to lie. Converting through `VolumeSampler` sidesteps it instead of correcting for it afterwards.
+
+**Structures are labelled voxels, not meshes.** A label volume on the scan's own grid answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Surfaces answer a different question and have to be intersected to get there.
+
+**The label volume is baked to an artifact.** Its inputs are fixed, so deriving it at startup would repeat the same work forever, and doing it in one frame stalls long enough for an XR compositor to drop the app. It is rasterized once and stored; startup unpacks 353 KB.
+
+**Structure colours are chosen against a greyscale base.** The scan spends the whole lightness range on anatomy, so chroma is the only channel left to separate a label from tissue. Gray and white matter border each other everywhere, so they take opposing warm and cool hues, and keep the one relationship that distinguishes them on a T1: white matter is the brighter of the two.
 
 **Two colour systems, kept apart.** Panel chrome uses a navy/steel/blue palette pulled from Navian's own site. The axial/coronal/sagittal frames use the conventional radiology coding, green/red/blue, and the mesh and trajectory-safety colours are anatomical and status colours. Branding the medical conventions would have made them wrong.
 
@@ -227,14 +263,16 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 - **The wrist menu needs hand tracking.** With controllers in hand it does not appear. The buttons themselves still work by ray.
 - **One spatial layout for both builds.** Panel positions were tuned for a standing headset user, and the desktop camera starts where that user's head would be. It works, but a desktop-first layout would put the tools closer together.
 - **The section plane starts outside the volume**, so the oblique panel is black until you drag the plane into the head.
-- **The vein safety check measures to the nearest mesh vertex, not the nearest point on the mesh surface.** A track that pierces a face between two sparse vertices could read as clear when it actually isn't. Fine on this vein mesh's vertex density at the default 3 mm corridor, but it is a vertex approximation, not a true surface distance.
+- **Structures render at the scan's resolution**, so their edges are 0.94 mm steps rather than smooth surfaces. Label ids cannot be interpolated — a value halfway between two ids is a third structure — so the blockiness is the true resolution of the data rather than something to filter away.
+- **The label volume inherits the meshes' segmentation.** It is a rasterization of the structures the base project ships, so it is exactly as accurate as they are.
+- **Structure colours sit at fixed opacities.** The shells in front of the vessels are kept faint so a trajectory stays visible through them, which is a layering compromise rather than a per-view setting.
 
 ## What I would add next
 
 In the order I would actually do them:
 
 1. **Click in a slice to move the crosshair.** Cheapest thing on this list and it closes the largest gap. The panels already know their own voxel mapping.
-2. **Offline atlas registration.** Register a labelled atlas (Harvard-Oxford) into IXI025's native grid with ANTsPy or SimpleITK, emit `IXI025_labels.nii.gz` on the same affine plus a `regions.json` of names, synonyms and centroids. Unity samples labels as a second volume through `VolumeSampler`. This stays out of Unity: registration is slow, iterative and much better tooled in Python, and the JSON is a seam that lets registration quality improve later without touching app code.
+2. **Offline atlas registration.** Register a labelled atlas (Harvard-Oxford) into IXI025's native grid with ANTsPy or SimpleITK, emit `IXI025_labels.nii.gz` on the same affine plus a `regions.json` of names, synonyms and centroids. The label-volume path it needs already exists — the structures use it — so this adds named anatomical regions to it. Registration stays out of Unity: it is slow, iterative and much better tooled in Python, and the JSON is a seam that lets registration quality improve later without touching app code.
 3. **An LLM agent to move the crosshair.** With `regions.json` in place, an agent resolves a typed or spoken request, "show me the left ventricle", "go to the thalamus", against region names, synonyms and descriptions, then moves the crosshair to the matched centroid. The interesting part is robust request understanding, not string equality: an agent handles synonyms, typos and compound descriptions a lookup table can't.
 4. **Clip the meshes with the same plane.** One clip plane uniform in the mesh shader, fed from the same transform that drives the cutout.
 5. **Window/level and trilinear sampling** on the 2D panels, which is what makes slices actually readable in a clinical viewer.

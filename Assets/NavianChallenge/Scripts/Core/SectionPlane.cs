@@ -18,8 +18,7 @@ namespace NavianChallenge
         public Texture SliceTexture => sliceTexture;
 
         [Header("Structure labels")]
-        [Tooltip("Tints the cut where it passes through a structure, matching the MPR panels and the 3D "
-               + "overlay. Leave empty for a plain greyscale cut.")]
+        [Tooltip("Tints the cut where it crosses a structure. Leave empty for a plain greyscale cut.")]
         public StructureVoxelizer structures;
         [Range(0f, 1f)] public float labelTint = 0.55f;
 
@@ -131,8 +130,7 @@ namespace NavianChallenge
 
             float g = Mathf.Clamp01((sampler.SampleUVW(uvw) - min) / range) * 255f;
 
-            // Tinted where the cut passes through a structure, so an oblique slice carries the same reading
-            // as the ortho panels; the greyscale underneath stays visible.
+            // Tinted where the cut crosses a structure, with the greyscale still readable underneath.
             if (sampler.HasLabels && sampler.TryLabelUVW(uvw, out int id))
             {
                 Color32[] colours = structures.LabelColours;

@@ -3,26 +3,15 @@ using UnityVolumeRendering;
 
 namespace NavianChallenge
 {
-    // A straight entry-to-target trajectory, the atomic unit of a surgical plan. Two points captured from
-    // the crosshair, a line between them, the depth in patient millimetres, and a warning when the track
-    // comes within the chosen safety corridor of a vein.
+    // A straight entry-to-target trajectory: two points captured from the crosshair, the depth in patient
+    // millimetres, and a warning when the track runs within the safety corridor of a vessel.
     //
-    // The two markers are parented to the volume in the scene, so a trajectory planned on the head stays
-    // on the head when it's grabbed and turned -- Unity's transform hierarchy tracks them, no code needed.
-    // The line and the readout live off the volume (a LineRenderer under the volume's 0.001 scale would be
-    // invisibly thin), so they're re-glued to the markers each frame; that's two position reads, nothing.
+    // The markers are parented to the volume, so a plan stays on the head when it is grabbed. The line and
+    // the readout are not (a LineRenderer under the volume's 0.001 scale would be invisibly thin), so they
+    // are re-glued to the markers each frame.
     //
-    // Depth is measured through VolumeSampler in scan millimetres rather than Unity metres, because the
-    // instrument's real travel is a patient dimension, not a scene one -- and because it is a patient
-    // dimension, it does not change when the head is moved or scaled. Neither does the vein-proximity
-    // result (the veins move with the volume too). So the expensive vein scan runs only when the
-    // trajectory or the corridor changes, never per frame.
-    //
-    // The vein check reads the structure labels baked into the volume rather than the vein mesh, so the
-    // question it answers is "does this track pass through vessel voxels", which is the surgical question.
-    // A distance-to-surface test asks something subtly different and lets a vessel thicker than the corridor
-    // slip through. The corridor is measured in patient millimetres: IXI025's voxels are
-    // 0.9375 x 0.9375 x 1.2 mm, so a radius taken in world units would be wrong by that anisotropy.
+    // Distances are patient millimetres rather than Unity metres, which also means they survive the head
+    // being moved or scaled, so the plan is only recomputed when it actually changes.
     public class TrajectoryPlanner : MonoBehaviour
     {
         [Tooltip("The point a Set captures. The section plane centre, which is the crosshair.")]
@@ -100,10 +89,8 @@ namespace NavianChallenge
             Recompute();
         }
 
-        // Projects a point onto the scalp along the ray from the head's centre through it. Marches intensity
-        // from outside the head inward; the first crossing of the tissue threshold is the outer surface on
-        // that side. Outside-in rather than centre-out so a sinus or other internal air pocket can't be read
-        // as the outside. Falls back to the point itself if the ray never meets tissue.
+        // Projects a point onto the scalp along the ray from the head's centre. Marches inward from outside
+        // rather than outward from the centre, so an air pocket like a sinus is not mistaken for the surface.
         Vector3 SnapToScalp(Vector3 near)
         {
             if (!EnsureSampler()) return near;
@@ -127,8 +114,7 @@ namespace NavianChallenge
             return near;
         }
 
-        // Binary search between a known air point and a known tissue point for a surface hit finer than the
-        // march step. Eight halvings take the step down by 256x, well under a voxel.
+        // Binary search between an air sample and a tissue sample, to land the surface well under a voxel.
         Vector3 Refine(Vector3 air, Vector3 tissue)
         {
             for (int i = 0; i < 8; i++)
@@ -185,8 +171,7 @@ namespace NavianChallenge
             if (corridorTube != null) corridorTube.gameObject.SetActive(complete);
         }
 
-        // Depth and vein status are patient-space quantities, unchanged by any move of the head, so they
-        // are recomputed only when the trajectory or the corridor actually changes.
+        // Only runs when the trajectory or the corridor changes; moving the head does not affect either.
         void Recompute()
         {
             if (!hasEntry || !hasTarget || !EnsureSampler()) return;
@@ -207,8 +192,7 @@ namespace NavianChallenge
                 }
             }
 
-            // The ray fades entry-to-target when clear, and turns solid red as an unmissable warning when it
-            // crosses a vein. The LineRenderer bakes this into per-vertex colour for the ray shader to read.
+            // Fades entry-to-target when clear, solid red when it crosses a vessel.
             if (line != null)
                 line.colorGradient = crossesVein
                     ? Flat(hitColour)
@@ -235,8 +219,7 @@ namespace NavianChallenge
             }
         }
 
-        // The markers track the volume for free; this keeps the line and the label glued to them, and turns
-        // the label to face the viewer. Cheap enough to run unconditionally rather than guess when to skip.
+        // Keeps the line and the label on the markers, and turns the label to face the viewer.
         void LateUpdate()
         {
             if (!hasEntry || !hasTarget) return;
@@ -256,10 +239,8 @@ namespace NavianChallenge
             SizeCorridor();
         }
 
-        // The tube lives off the volume, like the line, so it is re-fitted whenever the markers or the width
-        // move. Its radius is the corridor in patient millimetres converted by the track's own
-        // world-per-millimetre ratio -- the same scale the vein check measures against, so the tube on screen
-        // is the tube being tested.
+        // Re-fitted whenever the markers or the width move. The radius converts through the track's own
+        // world-per-millimetre ratio, the same scale the vein check uses, so the tube shown is the tube tested.
         void SizeCorridor()
         {
             if (corridorTube == null || !EnsureSampler())
@@ -305,11 +286,8 @@ namespace NavianChallenge
         }
 
         // Where the track first meets a vessel, as a fraction along entry-to-target, or -1 if it stays clear.
-        //
-        // Reading the vein voxels directly means a track driven through a vessel registers as a hit rather
-        // than as a distance that happens to be small -- a thick vessel used to slip past a corridor narrower
-        // than its own radius. The corridor is still honoured: each step samples the centre line and a ring at
-        // the corridor radius, so a track threading close by a vessel flags as well as one going through it.
+        // Reading the voxels means a track driven through a vessel is a hit outright, rather than a distance
+        // that happens to be small; the ring of samples is what keeps the corridor honoured as well.
         float FirstVeinHit(Vector3 entry, Vector3 target)
         {
             Vector3 axis = target - entry;

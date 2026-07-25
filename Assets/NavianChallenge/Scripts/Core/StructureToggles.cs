@@ -3,9 +3,8 @@ using UnityEngine;
 namespace NavianChallenge
 {
     // Each row shows and hides one structure and carries its colour, dimming when off, so the panel doubles
-    // as a legend. Structures live in the volume as voxel labels, so a row drives that label's visibility;
-    // the voxels themselves stay in place, which is what lets the trajectory check keep measuring against a
-    // vessel the surgeon has hidden from view.
+    // as a legend. Only the label's visibility changes; the voxels stay, so the trajectory check still
+    // measures against a vessel that has been hidden from view.
     public class StructureToggles : MonoBehaviour
     {
         [System.Serializable]

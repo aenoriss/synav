@@ -6,8 +6,8 @@ namespace NavianChallenge
     // Axial is fixed z, coronal fixed y, sagittal fixed x. The fourth panel shares the section plane's
     // oblique texture rather than sampling the volume again.
     //
-    // The panels stay on. Gating them on whether the crosshair sat on visible tissue read a single voxel,
-    // so it flipped with sub-millimetre movement at every tissue boundary.
+    // The panels stay on: gating them on the tissue under the crosshair read a single voxel, so they
+    // flipped with sub-millimetre movement at every boundary.
     public class MprScreens : MonoBehaviour
     {
         [Header("Authored panels")]
@@ -21,20 +21,15 @@ namespace NavianChallenge
         public Transform crosshair;
 
         [Header("Slice ID labels")]
-        [Tooltip("Shows which slice of the stack each view is on, the way a viewer prints the image number. "
-               + "The number is the voxel index along the axis the view cuts across: z for axial, y for "
-               + "coronal, x for sagittal -- reformatted from one volume, so it is the reslice index, the "
-               + "stand-in for a stored image's instance number.")]
+        [Tooltip("Which slice of the stack the view is on: the voxel index along the axis it cuts across.")]
         public TextMesh axialLabel;
         public TextMesh coronalLabel;
         public TextMesh sagittalLabel;
 
         [Header("Structure labels")]
-        [Tooltip("Tints slice pixels that fall inside a structure, so the 2D views show the same anatomy as "
-               + "the 3D overlay. Leave empty for plain greyscale reslices.")]
+        [Tooltip("Tints pixels inside a structure. Leave empty for plain greyscale reslices.")]
         public StructureVoxelizer structures;
-        [Tooltip("How strongly a labelled pixel takes the structure's colour. The slices stay readable as "
-               + "greyscale underneath, so this is its own setting rather than the overlay's alpha.")]
+        [Tooltip("How strongly a labelled pixel takes the structure's colour.")]
         [Range(0f, 1f)] public float labelTint = 0.55f;
 
         VolumeDataset dataset;
@@ -64,7 +59,7 @@ namespace NavianChallenge
 
             Vector3Int v = sampler.WorldToClampedVoxel(crosshair.position);
 
-            // Hiding a structure repaints the slices too, so a filtered view is filtered everywhere.
+            // Hiding a structure repaints the slices too.
             bool labelsChanged = TrackLabels();
             if (labelsChanged) last = -Vector3Int.one;
 
@@ -177,15 +172,14 @@ namespace NavianChallenge
             slice.texture.Apply(false);
         }
 
-        // One-based to read like a radiology viewer's image number ("74 / 150"), where the stored array is
-        // zero-based. Only called when the index changes, so no per-frame string churn.
+        // One-based, to read like a viewer's image number.
         static void Label(TextMesh label, int index, int total)
         {
             if (label != null)
                 label.text = (index + 1) + " / " + total;
         }
 
-        // Picks up the label field once it exists, and reports when its colours changed so the slices repaint.
+        // True when the colours changed, so the slices know to repaint.
         bool TrackLabels()
         {
             if (structures == null || !structures.Built || structures.LabelDataset == null)
@@ -204,8 +198,8 @@ namespace NavianChallenge
             return true;
         }
 
-        // The scan in greyscale, tinted toward a structure's colour where one is labelled. Tinting rather
-        // than replacing keeps the underlying intensities readable, which is the point of a reslice.
+        // Greyscale, tinted toward a structure's colour where one is labelled. Tinting rather than
+        // replacing keeps the intensities readable, which is the point of a reslice.
         Color32 Shade(int index)
         {
             float g = Mathf.Clamp((dataset.data[index] - min) * greyScale, 0f, 255f);

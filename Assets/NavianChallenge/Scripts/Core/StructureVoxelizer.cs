@@ -7,62 +7,45 @@ using UnityVolumeRendering;
 
 namespace NavianChallenge
 {
-    // Rasterizes the co-registered structure meshes into one integer-label volume on the MRI's own voxel grid
-    // and installs it as UnityVolumeRendering's secondary volume. The structures then render as coloured
-    // voxels inside the MRI, and the same field can be read per voxel, so a trajectory is testable against
-    // vein voxels directly instead of against mesh geometry sitting beside the scan.
+    // Rasterizes the structure meshes into one integer-label volume on the MRI's voxel grid and installs it
+    // as UnityVolumeRendering's secondary volume, so the structures render as voxels inside the scan and the
+    // same field can be read per voxel to test a trajectory against vessels.
     //
-    // The mapping needs no tuning: MeshesRoot carries the same transform as the volume container, so
-    // VolumeSampler.WorldToUVW takes a mesh vertex straight to the voxel it falls in. One voxel holds one id,
-    // and structures are written in array order with the last one winning an overlap, so veins go last.
-    //
-    // Requires Read/Write Enabled on each mesh's import settings: without it runtime code cannot read
-    // vertices and the bake silently comes out empty.
+    // The meshes need Read/Write enabled in their import settings, or the bake comes out empty.
     public class StructureVoxelizer : MonoBehaviour
     {
         [System.Serializable]
         public class Structure
         {
-            [Tooltip("A mesh under MeshesRoot. Read/Write must be enabled on its import settings.")]
             public Transform mesh;
-            [Tooltip("Unique label id written into the voxel grid.")]
             public int id = 1;
             public string label = "Structure";
-            [Tooltip("Overlay colour. Alpha is how solid the voxels read.")]
             public Color colour = Color.white;
         }
 
-        [Tooltip("Written in order, so the LAST entry wins any overlap. Veins belong last.")]
+        [Tooltip("Written in order, so the last entry wins any overlap. Veins belong last.")]
         public Structure[] structures;
 
-        [Tooltip("Cap on samples per triangle edge. Higher fills large triangles but costs more at load.")]
+        [Tooltip("Cap on samples per triangle edge.")]
         public int maxSamplesPerEdge = 8;
 
-        [Tooltip("The label field, rasterized ahead of time and stored on disk. With this set, starting the "
-               + "scene just unpacks it. Left empty it fills itself in: the meshes are rasterized once and the "
-               + "result written here, so only the very first run pays for it. Right-click the component and "
-               + "choose Bake Labels To Disk to force a refresh after changing the meshes.")]
+        [Tooltip("The label field stored on disk. Left empty it fills itself in on the first run. Right-click "
+               + "the component to force a refresh after changing the meshes.")]
         public TextAsset bakedLabels;
 
         const string BakedPath = "Assets/NavianChallenge/Data/Atlas/IXI025/Labels/StructureLabels.bytes";
 
-        [Tooltip("Triangles rasterized before giving the frame back, for the fallback path that has no baked "
-               + "asset. The four meshes come to a few hundred thousand triangles between them, which in one "
-               + "frame stalls long enough for an XR compositor to drop the app.")]
+        [Tooltip("Triangles rasterized per frame when there is no baked asset.")]
         public int trianglesPerFrame = 12000;
 
-        [Tooltip("Print one line when the bake lands, with the voxel count.")]
         public bool logBuild = true;
 
         public VolumeDataset LabelDataset { get; private set; }
         public bool Built { get; private set; }
 
-        // Colour per label id for the 2D views, which tint their pixels rather than raymarching. Alpha is
-        // only a shown/hidden flag here: the alphas above are tuned for accumulation along a ray, which is
-        // not what a flat slice needs.
+        // Colour per id for the slice views. Alpha is only a shown/hidden flag; the alphas above are tuned
+        // for accumulation along a ray, which is not what a flat slice needs.
         public Color32[] LabelColours { get; private set; }
-
-        // Bumped whenever the table changes, so the slice views know to redraw without polling it.
         public int LabelVersion { get; private set; }
 
         readonly Dictionary<int, bool> shown = new Dictionary<int, bool>();
@@ -75,8 +58,8 @@ namespace NavianChallenge
             if (Built || building || !Application.isPlaying)
                 return;
 
-            // The volume is created asynchronously and parented a moment later; rasterizing against that
-            // half-placed transform would put every vertex outside the grid, so wait for it to settle.
+            // The volume is parented a moment after it is created, and rasterizing against the half-placed
+            // transform puts every vertex outside the grid.
             var vol = FindFirstObjectByType<VolumeRenderedObject>();
             if (vol == null || vol.dataset == null || vol.meshRenderer == null || vol.transform.parent == null)
                 return;
@@ -84,8 +67,6 @@ namespace NavianChallenge
             volume = vol;
             building = true;
 
-            // The bake only depends on the meshes and the grid, both fixed, so a stored result is as good as
-            // a fresh one and costs an unpack instead of a few hundred thousand triangles.
             float[] stored = LoadBaked(volume.dataset);
             if (stored != null)
             {
@@ -116,12 +97,11 @@ namespace NavianChallenge
 
             if (marked == 0)
             {
-                building = false;   // nothing landed in the grid, so the volume is not placed yet
+                building = false;   // volume not placed yet, try again next frame
                 yield break;
             }
 
 #if UNITY_EDITOR
-            // Having paid for the rasterization once, keep it, so no later run has to.
             if (bakedLabels == null)
                 SaveBaked(data, dimX, dimY, dimZ);
 #endif
@@ -145,8 +125,7 @@ namespace NavianChallenge
 
             volume.AddSegmentation(LabelDataset, Labels());
 
-            // The voxels are the structures now, so the meshes they came from stop drawing. The objects stay
-            // alive: their transforms and geometry are what a rebuild reads.
+            // The voxels are the structures now; the objects stay alive because a rebuild reads their meshes.
             foreach (Structure s in structures)
                 if (s.mesh != null)
                 {
@@ -163,8 +142,7 @@ namespace NavianChallenge
             building = false;
         }
 
-        // Show or hide one structure by rebuilding the labels with that id's alpha zeroed. The voxel data is
-        // untouched, so a hidden structure is still there for the trajectory check.
+        // Hiding zeroes the label's alpha and leaves the voxels alone, so the trajectory check still sees it.
         public void SetVisible(int id, bool visible)
         {
             if (!Built || volume == null)
@@ -194,9 +172,7 @@ namespace NavianChallenge
             LabelVersion++;
         }
 
-        // One byte per voxel behind a gzip stream. Ids are small integers and most of the grid is empty, so
-        // this packs a 256x256x150 field down to a fraction of a megabyte -- small enough to keep in the repo
-        // beside the scan it belongs to.
+        // One byte per voxel, gzipped. Most of the grid is empty, so it packs to a few hundred kilobytes.
         static byte[] Encode(float[] data, int dimX, int dimY, int dimZ)
         {
             var raw = new byte[12 + data.Length];
@@ -212,13 +188,11 @@ namespace NavianChallenge
             }
         }
 
-        // Null whenever there is no asset, it cannot be read, or it was baked for a different grid, so a
-        // stale or mismatched file falls back to rasterizing rather than loading a wrong field.
+        // Null for a missing, unreadable or differently sized file, which then falls back to rasterizing.
         float[] LoadBaked(VolumeDataset ds)
         {
 #if UNITY_EDITOR
-            // A fresh clone has the file but no reference to it yet, so find it by path and keep it. Outside
-            // play the reference is written back into the scene, which is what a build reads.
+            // A fresh clone has the file but no reference to it yet.
             if (bakedLabels == null)
             {
                 bakedLabels = UnityEditor.AssetDatabase.LoadAssetAtPath<TextAsset>(BakedPath);
@@ -263,8 +237,7 @@ namespace NavianChallenge
         }
 
 #if UNITY_EDITOR
-        // Rasterizes now and writes the result next to the scan, then points this component at it. Meant to
-        // be run once whenever the meshes or the grid change; after that every play just unpacks the file.
+        // Run after changing the meshes; every play afterwards just unpacks the file.
         [ContextMenu("Bake Labels To Disk")]
         public void BakeToDisk()
         {
@@ -314,10 +287,8 @@ namespace NavianChallenge
         }
 #endif
 
-        // Sorted by id ascending, which UnityVolumeRendering requires: it builds the segmentation transfer
-        // function by walking this list in order, and its own sort call discards the result, so an unsorted
-        // list interleaves the control points and the overlay maps to nothing. Rasterizing wants the opposite
-        // order, later structures overwriting earlier ones, so the two are kept apart.
+        // Ascending by id, which UnityVolumeRendering needs: it walks this list in order to build the
+        // transfer function and its own sort call discards the result. Rasterizing wants the opposite order.
         List<SegmentationLabel> Labels()
         {
             var list = new List<SegmentationLabel>(structures.Length);
@@ -332,10 +303,9 @@ namespace NavianChallenge
             return list;
         }
 
-        // Each triangle is sampled on a barycentric grid sized to its own voxel extent, so no voxel under the
-        // surface is missed. Counts into `marked`, which is how the caller tells a real bake from one that
-        // ran before the volume was placed, and hands the frame back every so often so the bake never stalls
-        // long enough to be noticed.
+        // Samples each triangle on a barycentric grid sized to its voxel extent, so no voxel under the
+        // surface is missed. Yields periodically: doing all four meshes in one frame stalls XR badly enough
+        // for the compositor to drop the app.
         IEnumerator Rasterize(Transform meshTransform, int id, float[] data, Matrix4x4 toUVW, int dimX, int dimY, int dimZ)
         {
             var filter = meshTransform.GetComponent<MeshFilter>();

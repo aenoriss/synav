@@ -2,13 +2,9 @@ using UnityEngine;
 
 namespace NavianChallenge
 {
-    // Desktop-only: angles the section plane with the arrow keys, so setting an oblique cut does not mean
-    // grabbing the plane and drag-rotating it. Turns about the plane's own in-plane axes, pivoting on the
-    // crosshair at its centre, so the point of interest stays put while the cut tilts around it.
-    //
-    // Only two axes, on purpose: the plane's normal is its local forward, and a plane is unchanged by
-    // spinning about its own normal -- so pitch (about local right) and yaw (about local up) are the whole
-    // of what can re-orient a cut. There is no third rotation worth binding.
+    // Angles the section plane with the arrow keys, turning about its own in-plane axes so the crosshair
+    // at its centre stays put. Two axes only: a plane is unchanged by spinning about its own normal, so
+    // pitch and yaw are the whole of what can re-orient a cut.
     public class PlaneRotateInput : MonoBehaviour
     {
         [Tooltip("The section plane to angle. Its forward is the cut normal; right and up lie in the slice.")]
@@ -35,8 +31,7 @@ namespace NavianChallenge
             bool fast = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             float step = turnSpeed * (fast ? sprint : 1f) * Time.deltaTime;
 
-            // World space about the plane's own axes: the axis argument already carries its orientation, so
-            // this reads as "tip the normal up/down, swing it left/right" regardless of where the plane sits.
+            // World space about the plane's own axes, so this holds wherever the plane has been moved.
             plane.Rotate(plane.right, pitch * step, Space.World);
             plane.Rotate(plane.up, yaw * step, Space.World);
         }
