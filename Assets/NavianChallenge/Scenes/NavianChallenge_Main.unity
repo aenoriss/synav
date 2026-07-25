@@ -1958,22 +1958,22 @@ MonoBehaviour:
     button: {fileID: 1517629707}
     face: {fileID: 1016180661}
     label: {fileID: 827744560}
-    colour: {r: 0.13, g: 0.72, b: 0.74, a: 1}
+    colour: {r: 0.16, g: 0.68, b: 0.62, a: 1}
   - labelId: 3
     button: {fileID: 1231124627}
     face: {fileID: 1911633871}
     label: {fileID: 1939422482}
-    colour: {r: 0.68, g: 0.35, b: 0.96, a: 1}
+    colour: {r: 0.98, g: 0.78, b: 0.25, a: 1}
   - labelId: 1
     button: {fileID: 57673929}
     face: {fileID: 477990038}
     label: {fileID: 1152541680}
-    colour: {r: 0.95, g: 0.16, b: 0.33, a: 1}
+    colour: {r: 0.95, g: 0.16, b: 0.28, a: 1}
   - labelId: 4
     button: {fileID: 1114536243}
     face: {fileID: 1121484877}
     label: {fileID: 862218731}
-    colour: {r: 0.98, g: 0.72, b: 0.58, a: 1}
+    colour: {r: 0.88, g: 0.62, b: 0.52, a: 1}
   offTint: {r: 0.16862746, g: 0.21960784, b: 0.3019608, a: 1}
 --- !u!4 &233155852
 Transform:
@@ -11920,19 +11920,19 @@ MonoBehaviour:
   - mesh: {fileID: 344912974}
     id: 4
     label: Skin
-    colour: {r: 0.98, g: 0.72, b: 0.58, a: 0.2}
+    colour: {r: 0.88, g: 0.62, b: 0.52, a: 0.2}
   - mesh: {fileID: 1130260091}
     id: 3
     label: White Matter
-    colour: {r: 0.68, g: 0.35, b: 0.96, a: 0.5}
+    colour: {r: 0.98, g: 0.78, b: 0.25, a: 0.5}
   - mesh: {fileID: 968063480}
     id: 2
     label: Gray Matter
-    colour: {r: 0.13, g: 0.72, b: 0.74, a: 0.1}
+    colour: {r: 0.16, g: 0.68, b: 0.62, a: 0.1}
   - mesh: {fileID: 1611502059}
     id: 1
     label: Veins
-    colour: {r: 0.95, g: 0.16, b: 0.33, a: 1}
+    colour: {r: 0.95, g: 0.16, b: 0.28, a: 1}
   maxSamplesPerEdge: 8
   bakedLabels: {fileID: 4900000, guid: 8f28b3aa2b8ae304b8c05a8f2521524b, type: 3}
   trianglesPerFrame: 12000
