@@ -77,6 +77,9 @@ namespace NavianChallenge.EditorTools
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             var atlasRoot = new GameObject("AtlasRoot");
+            atlasRoot.transform.position = new Vector3(0f, 1.899969f, 0.45f);
+            atlasRoot.transform.localRotation = Quaternion.Euler(270.5211f, 0f, 74.3341f);
+            atlasRoot.transform.localScale = new Vector3(0.001f, 0.001f, 0.001f);
 
             // MeshesRoot mirrors the UVR volume container transform so meshes co-register
             // with the MRI texture (dataset.scale == dim*spacing, dataset.rotation == 90x).
