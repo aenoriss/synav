@@ -73,7 +73,14 @@ namespace NavianChallenge
         public bool TryLabelAtWorld(Vector3 world, out int id)
         {
             id = 0;
-            if (labels == null || !TryWorldToUVW(world, out Vector3 uvw))
+            return labels != null && TryWorldToUVW(world, out Vector3 uvw) && TryLabelUVW(uvw, out id);
+        }
+
+        // For sweeps that already work in normalised coords and would only be converting back and forth.
+        public bool TryLabelUVW(Vector3 uvw, out int id)
+        {
+            id = 0;
+            if (labels == null)
                 return false;
 
             id = Mathf.RoundToInt(labels.GetData(

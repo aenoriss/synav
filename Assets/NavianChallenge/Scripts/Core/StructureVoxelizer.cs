@@ -1,4 +1,7 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using UnityEngine;
 using UnityVolumeRendering;
 
@@ -35,50 +38,91 @@ namespace NavianChallenge
         [Tooltip("Cap on samples per triangle edge. Higher fills large triangles but costs more at load.")]
         public int maxSamplesPerEdge = 8;
 
+        [Tooltip("The label field, rasterized ahead of time and stored on disk. With this set, starting the "
+               + "scene just unpacks it; the meshes are only rasterized when it is missing. Right-click this "
+               + "component and choose Bake Labels To Disk to make or refresh it.")]
+        public TextAsset bakedLabels;
+
+        [Tooltip("Triangles rasterized before giving the frame back, for the fallback path that has no baked "
+               + "asset. The four meshes come to a few hundred thousand triangles between them, which in one "
+               + "frame stalls long enough for an XR compositor to drop the app.")]
+        public int trianglesPerFrame = 12000;
+
         [Tooltip("Print one line when the bake lands, with the voxel count.")]
         public bool logBuild = true;
 
         public VolumeDataset LabelDataset { get; private set; }
         public bool Built { get; private set; }
 
+        // Colour per label id for the 2D views, which tint their pixels rather than raymarching. Alpha is
+        // only a shown/hidden flag here: the alphas above are tuned for accumulation along a ray, which is
+        // not what a flat slice needs.
+        public Color32[] LabelColours { get; private set; }
+
+        // Bumped whenever the table changes, so the slice views know to redraw without polling it.
+        public int LabelVersion { get; private set; }
+
         readonly Dictionary<int, bool> shown = new Dictionary<int, bool>();
         VolumeRenderedObject volume;
+        bool building;
+        int marked;
 
         void Update()
         {
-            if (!Built && Application.isPlaying)
-                Built = TryBuild();
-        }
+            if (Built || building || !Application.isPlaying)
+                return;
 
-        [ContextMenu("Build Now")]
-        public void BuildNow() => Built = TryBuild();
-
-        // The volume is created asynchronously and parented a moment later, so this waits for it to be in
-        // place; rasterizing against the half-placed transform would put every vertex outside the grid.
-        bool TryBuild()
-        {
+            // The volume is created asynchronously and parented a moment later; rasterizing against that
+            // half-placed transform would put every vertex outside the grid, so wait for it to settle.
             var vol = FindFirstObjectByType<VolumeRenderedObject>();
             if (vol == null || vol.dataset == null || vol.meshRenderer == null || vol.transform.parent == null)
-                return false;
+                return;
 
             volume = vol;
-            return Build();
+            building = true;
+
+            // The bake only depends on the meshes and the grid, both fixed, so a stored result is as good as
+            // a fresh one and costs an unpack instead of a few hundred thousand triangles.
+            float[] stored = LoadBaked(volume.dataset);
+            if (stored != null)
+            {
+                Install(stored, volume.dataset);
+                return;
+            }
+
+            StartCoroutine(Build());
         }
 
-        bool Build()
+        IEnumerator Build()
         {
             VolumeDataset ds = volume.dataset;
             int dimX = ds.dimX, dimY = ds.dimY, dimZ = ds.dimZ;
             Matrix4x4 toUVW = new VolumeSampler(ds, volume.meshRenderer.transform).WorldToUVW;
 
             float[] data = new float[dimX * dimY * dimZ];
-            int marked = 0;
+            marked = 0;
             foreach (Structure s in structures)
-                if (s.mesh != null)
-                    marked += Rasterize(s.mesh, s.id, data, toUVW, dimX, dimY, dimZ);
+            {
+                if (s.mesh == null)
+                    continue;
+
+                IEnumerator raster = Rasterize(s.mesh, s.id, data, toUVW, dimX, dimY, dimZ);
+                while (raster.MoveNext())
+                    yield return null;
+            }
 
             if (marked == 0)
-                return false;   // nothing landed in the grid, so the volume is not placed yet
+            {
+                building = false;   // nothing landed in the grid, so the volume is not placed yet
+                yield break;
+            }
+
+            Install(data, ds);
+        }
+
+        void Install(float[] data, VolumeDataset ds)
+        {
+            int dimX = ds.dimX, dimY = ds.dimY, dimZ = ds.dimZ;
 
             LabelDataset = ScriptableObject.CreateInstance<VolumeDataset>();
             LabelDataset.data = data;
@@ -89,6 +133,7 @@ namespace NavianChallenge
 
             foreach (Structure s in structures)
                 shown[s.id] = true;
+            RebuildColourTable();
 
             volume.AddSegmentation(LabelDataset, Labels());
 
@@ -106,7 +151,8 @@ namespace NavianChallenge
                         + " structures (ids up to " + LabelDataset.GetMaxDataValue() + ") on a "
                         + dimX + "x" + dimY + "x" + dimZ + " grid");
 
-            return true;
+            Built = true;
+            building = false;
         }
 
         // Show or hide one structure by rebuilding the labels with that id's alpha zeroed. The voxel data is
@@ -118,9 +164,132 @@ namespace NavianChallenge
 
             shown[id] = visible;
             volume.SetSegmentationLabels(Labels());
+            RebuildColourTable();
         }
 
         public bool IsShown(int id) => shown.TryGetValue(id, out bool on) && on;
+
+        void RebuildColourTable()
+        {
+            int maxId = 0;
+            foreach (Structure s in structures)
+                maxId = Mathf.Max(maxId, s.id);
+
+            var table = new Color32[maxId + 1];
+            foreach (Structure s in structures)
+            {
+                Color c = s.colour;
+                c.a = IsShown(s.id) ? 1f : 0f;
+                table[s.id] = c;
+            }
+            LabelColours = table;
+            LabelVersion++;
+        }
+
+        // One byte per voxel behind a gzip stream. Ids are small integers and most of the grid is empty, so
+        // this packs a 256x256x150 field down to a fraction of a megabyte -- small enough to keep in the repo
+        // beside the scan it belongs to.
+        static byte[] Encode(float[] data, int dimX, int dimY, int dimZ)
+        {
+            var raw = new byte[12 + data.Length];
+            System.Buffer.BlockCopy(new[] { dimX, dimY, dimZ }, 0, raw, 0, 12);
+            for (int i = 0; i < data.Length; i++)
+                raw[12 + i] = (byte)Mathf.Clamp(Mathf.RoundToInt(data[i]), 0, 255);
+
+            using (var output = new MemoryStream())
+            {
+                using (var zip = new GZipStream(output, CompressionMode.Compress))
+                    zip.Write(raw, 0, raw.Length);
+                return output.ToArray();
+            }
+        }
+
+        // Null whenever there is no asset, it cannot be read, or it was baked for a different grid, so a
+        // stale or mismatched file falls back to rasterizing rather than loading a wrong field.
+        float[] LoadBaked(VolumeDataset ds)
+        {
+            if (bakedLabels == null || bakedLabels.bytes == null || bakedLabels.bytes.Length == 0)
+                return null;
+
+            try
+            {
+                using (var input = new MemoryStream(bakedLabels.bytes))
+                using (var zip = new GZipStream(input, CompressionMode.Decompress))
+                using (var output = new MemoryStream())
+                {
+                    zip.CopyTo(output);
+                    byte[] raw = output.ToArray();
+                    if (raw.Length < 12)
+                        return null;
+
+                    var dims = new int[3];
+                    System.Buffer.BlockCopy(raw, 0, dims, 0, 12);
+                    int count = ds.dimX * ds.dimY * ds.dimZ;
+                    if (dims[0] != ds.dimX || dims[1] != ds.dimY || dims[2] != ds.dimZ || raw.Length != 12 + count)
+                        return null;
+
+                    var data = new float[count];
+                    marked = 0;
+                    for (int i = 0; i < count; i++)
+                    {
+                        data[i] = raw[12 + i];
+                        if (raw[12 + i] != 0) marked++;
+                    }
+                    return data;
+                }
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+        }
+
+#if UNITY_EDITOR
+        // Rasterizes now and writes the result next to the scan, then points this component at it. Meant to
+        // be run once whenever the meshes or the grid change; after that every play just unpacks the file.
+        [ContextMenu("Bake Labels To Disk")]
+        public void BakeToDisk()
+        {
+            var vol = FindFirstObjectByType<VolumeRenderedObject>();
+            if (vol == null || vol.dataset == null || vol.meshRenderer == null || vol.transform.parent == null)
+            {
+                Debug.LogError("[StructureVoxelizer] No placed volume to bake against. Enter play mode, or let "
+                             + "the editor preview build, and try again.");
+                return;
+            }
+
+            VolumeDataset ds = vol.dataset;
+            int dimX = ds.dimX, dimY = ds.dimY, dimZ = ds.dimZ;
+            Matrix4x4 toUVW = new VolumeSampler(ds, vol.meshRenderer.transform).WorldToUVW;
+
+            var data = new float[dimX * dimY * dimZ];
+            marked = 0;
+            foreach (Structure s in structures)
+            {
+                if (s.mesh == null) continue;
+                IEnumerator raster = Rasterize(s.mesh, s.id, data, toUVW, dimX, dimY, dimZ);
+                while (raster.MoveNext()) { }   // run it straight through; no frames to protect here
+            }
+
+            if (marked == 0)
+            {
+                Debug.LogError("[StructureVoxelizer] Bake marked no voxels. Check that the meshes have "
+                             + "Read/Write enabled and that the volume is placed.");
+                return;
+            }
+
+            const string folder = "Assets/NavianChallenge/Data/Atlas/IXI025/Labels";
+            Directory.CreateDirectory(folder);
+            string path = folder + "/StructureLabels.bytes";
+            File.WriteAllBytes(path, Encode(data, dimX, dimY, dimZ));
+            UnityEditor.AssetDatabase.ImportAsset(path);
+
+            bakedLabels = UnityEditor.AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+            UnityEditor.EditorUtility.SetDirty(this);
+            Debug.Log("[StructureVoxelizer] baked " + marked + " voxels to " + path
+                    + " (" + (new FileInfo(path).Length / 1024) + " KB)");
+        }
+#endif
 
         // Sorted by id ascending, which UnityVolumeRendering requires: it builds the segmentation transfer
         // function by walking this list in order, and its own sort call discards the result, so an unsorted
@@ -141,21 +310,29 @@ namespace NavianChallenge
         }
 
         // Each triangle is sampled on a barycentric grid sized to its own voxel extent, so no voxel under the
-        // surface is missed. Returns how many voxels landed inside the grid, which is how the caller tells a
-        // real bake from one that ran before the volume was placed.
-        int Rasterize(Transform meshTransform, int id, float[] data, Matrix4x4 toUVW, int dimX, int dimY, int dimZ)
+        // surface is missed. Counts into `marked`, which is how the caller tells a real bake from one that
+        // ran before the volume was placed, and hands the frame back every so often so the bake never stalls
+        // long enough to be noticed.
+        IEnumerator Rasterize(Transform meshTransform, int id, float[] data, Matrix4x4 toUVW, int dimX, int dimY, int dimZ)
         {
             var filter = meshTransform.GetComponent<MeshFilter>();
             if (filter == null || filter.sharedMesh == null)
-                return 0;
+                yield break;
 
             Vector3[] verts = filter.sharedMesh.vertices;
             int[] tris = filter.sharedMesh.triangles;
             Matrix4x4 toWorld = meshTransform.localToWorldMatrix;
-            int marked = 0;
+            int budget = Mathf.Max(1, trianglesPerFrame);
+            int sinceYield = 0;
 
             for (int t = 0; t < tris.Length; t += 3)
             {
+                if (++sinceYield >= budget)
+                {
+                    sinceYield = 0;
+                    yield return null;
+                }
+
                 Vector3 a = toWorld.MultiplyPoint3x4(verts[tris[t]]);
                 Vector3 b = toWorld.MultiplyPoint3x4(verts[tris[t + 1]]);
                 Vector3 c = toWorld.MultiplyPoint3x4(verts[tris[t + 2]]);
@@ -179,8 +356,6 @@ namespace NavianChallenge
                         data[index] = id;
                     }
             }
-
-            return marked;
         }
 
         static float VoxelSpan(Vector3 ua, Vector3 ub, int dimX, int dimY, int dimZ)

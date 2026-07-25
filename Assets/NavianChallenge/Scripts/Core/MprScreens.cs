@@ -29,12 +29,24 @@ namespace NavianChallenge
         public TextMesh coronalLabel;
         public TextMesh sagittalLabel;
 
+        [Header("Structure labels")]
+        [Tooltip("Tints slice pixels that fall inside a structure, so the 2D views show the same anatomy as "
+               + "the 3D overlay. Leave empty for plain greyscale reslices.")]
+        public StructureVoxelizer structures;
+        [Tooltip("How strongly a labelled pixel takes the structure's colour. The slices stay readable as "
+               + "greyscale underneath, so this is its own setting rather than the overlay's alpha.")]
+        [Range(0f, 1f)] public float labelTint = 0.55f;
+
         VolumeDataset dataset;
         VolumeSampler sampler;
         SectionPlane plane;
         Slice axial, coronal, sagittal;
         Vector3Int last = -Vector3Int.one;
         float min, greyScale;
+
+        float[] labelData;
+        Color32[] labelColours;
+        int labelVersion = -1;
 
         class Slice
         {
@@ -51,6 +63,10 @@ namespace NavianChallenge
                 return;
 
             Vector3Int v = sampler.WorldToClampedVoxel(crosshair.position);
+
+            // Hiding a structure repaints the slices too, so a filtered view is filtered everywhere.
+            bool labelsChanged = TrackLabels();
+            if (labelsChanged) last = -Vector3Int.one;
 
             if (v.z != last.z) { FillAxial(v.z); Label(axialLabel, v.z, dataset.dimZ); }
             if (v.y != last.y) { FillCoronal(v.y); Label(coronalLabel, v.y, dataset.dimY); }
@@ -110,7 +126,6 @@ namespace NavianChallenge
         {
             if (axial == null) return;
             int w = dataset.dimX, h = dataset.dimY;
-            float[] data = dataset.data;
             int slab = z * w * h;
 
             for (int y = 0; y < h; y++)
@@ -118,7 +133,7 @@ namespace NavianChallenge
                 int src = slab + y * w;
                 int dst = y * w;
                 for (int x = 0; x < w; x++)
-                    axial.pixels[dst + x] = Grey(data[src + x]);
+                    axial.pixels[dst + x] = Shade(src + x);
             }
             Push(axial);
         }
@@ -127,7 +142,6 @@ namespace NavianChallenge
         {
             if (coronal == null) return;
             int w = dataset.dimX, h = dataset.dimZ;
-            float[] data = dataset.data;
             int slab = dataset.dimX * dataset.dimY;
 
             for (int z = 0; z < h; z++)
@@ -135,7 +149,7 @@ namespace NavianChallenge
                 int src = y * w + z * slab;
                 int dst = z * w;
                 for (int x = 0; x < w; x++)
-                    coronal.pixels[dst + x] = Grey(data[src + x]);
+                    coronal.pixels[dst + x] = Shade(src + x);
             }
             Push(coronal);
         }
@@ -144,7 +158,6 @@ namespace NavianChallenge
         {
             if (sagittal == null) return;
             int w = dataset.dimY, h = dataset.dimZ;
-            float[] data = dataset.data;
             int stride = dataset.dimX;
             int slab = dataset.dimX * dataset.dimY;
 
@@ -153,7 +166,7 @@ namespace NavianChallenge
                 int src = x + z * slab;
                 int dst = z * w;
                 for (int y = 0; y < w; y++)
-                    sagittal.pixels[dst + y] = Grey(data[src + y * stride]);
+                    sagittal.pixels[dst + y] = Shade(src + y * stride);
             }
             Push(sagittal);
         }
@@ -172,10 +185,46 @@ namespace NavianChallenge
                 label.text = (index + 1) + " / " + total;
         }
 
-        Color32 Grey(float value)
+        // Picks up the label field once it exists, and reports when its colours changed so the slices repaint.
+        bool TrackLabels()
         {
-            byte g = (byte)Mathf.Clamp((value - min) * greyScale, 0f, 255f);
-            return new Color32(g, g, g, 255);
+            if (structures == null || !structures.Built || structures.LabelDataset == null)
+                return false;
+
+            float[] data = structures.LabelDataset.data;
+            if (data == null || data.Length != dataset.data.Length || structures.LabelColours == null)
+                return false;
+
+            if (structures.LabelVersion == labelVersion)
+                return false;
+
+            labelData = data;
+            labelColours = structures.LabelColours;
+            labelVersion = structures.LabelVersion;
+            return true;
+        }
+
+        // The scan in greyscale, tinted toward a structure's colour where one is labelled. Tinting rather
+        // than replacing keeps the underlying intensities readable, which is the point of a reslice.
+        Color32 Shade(int index)
+        {
+            float g = Mathf.Clamp((dataset.data[index] - min) * greyScale, 0f, 255f);
+
+            if (labelData != null)
+            {
+                int id = Mathf.RoundToInt(labelData[index]);
+                if (id > 0 && id < labelColours.Length && labelColours[id].a > 0)
+                {
+                    Color32 c = labelColours[id];
+                    return new Color32(
+                        (byte)Mathf.Lerp(g, c.r, labelTint),
+                        (byte)Mathf.Lerp(g, c.g, labelTint),
+                        (byte)Mathf.Lerp(g, c.b, labelTint), 255);
+                }
+            }
+
+            byte grey = (byte)g;
+            return new Color32(grey, grey, grey, 255);
         }
     }
 }

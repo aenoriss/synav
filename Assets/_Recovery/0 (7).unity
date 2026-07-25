@@ -4039,7 +4039,7 @@ MonoBehaviour:
   axialLabel: {fileID: 409774019}
   coronalLabel: {fileID: 2047236542}
   sagittalLabel: {fileID: 1366583827}
-  structures: {fileID: 1536434298}
+  structures: {fileID: 0}
   labelTint: 0.55
 --- !u!4 &548856997
 Transform:
@@ -11232,7 +11232,7 @@ MonoBehaviour:
   cutter: {fileID: 1481591425}
   planeSize: 0.3
   sliceResolution: 192
-  structures: {fileID: 1536434298}
+  structures: {fileID: 0}
   labelTint: 0.55
 --- !u!4 &1507704378
 Transform:
@@ -11934,8 +11934,6 @@ MonoBehaviour:
     label: Veins
     colour: {r: 0.95, g: 0.25, b: 0.28, a: 1}
   maxSamplesPerEdge: 8
-  bakedLabels: {fileID: 4900000, guid: 8f28b3aa2b8ae304b8c05a8f2521524b, type: 3}
-  trianglesPerFrame: 12000
   logBuild: 0
 --- !u!1 &1572694317
 GameObject:

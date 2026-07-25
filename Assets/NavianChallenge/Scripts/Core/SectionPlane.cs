@@ -17,11 +17,18 @@ namespace NavianChallenge
         // Shared with the MPR board, so showing the cut twice costs nothing extra.
         public Texture SliceTexture => sliceTexture;
 
+        [Header("Structure labels")]
+        [Tooltip("Tints the cut where it passes through a structure, matching the MPR panels and the 3D "
+               + "overlay. Leave empty for a plain greyscale cut.")]
+        public StructureVoxelizer structures;
+        [Range(0f, 1f)] public float labelTint = 0.55f;
+
         VolumeSampler sampler;
         Texture2D sliceTexture;
         Color32[] slicePixels;
         float min, range;
         Matrix4x4 lastToUVW;
+        int labelVersion = -1;
 
         void Awake()
         {
@@ -40,13 +47,18 @@ namespace NavianChallenge
 
             KeepCutFacingViewer();
 
+            if (structures != null && structures.Built && !sampler.HasLabels)
+                sampler.UseLabels(structures.LabelDataset);
+
             // Keyed on the plane composed with the volume, not the plane alone: the volume is grabbable too,
             // so moving either one changes the cut.
             Matrix4x4 toUVW = sampler.WorldToUVW * transform.localToWorldMatrix;
-            if (toUVW == lastToUVW)
+            int version = structures != null ? structures.LabelVersion : -1;
+            if (toUVW == lastToUVW && version == labelVersion)
                 return;
 
             lastToUVW = toUVW;
+            labelVersion = version;
             RenderSlice(toUVW);
         }
 
@@ -117,7 +129,24 @@ namespace NavianChallenge
             if (uvw.x < 0f || uvw.x > 1f || uvw.y < 0f || uvw.y > 1f || uvw.z < 0f || uvw.z > 1f)
                 return new Color32(0, 0, 0, 0);
 
-            byte grey = (byte)(Mathf.Clamp01((sampler.SampleUVW(uvw) - min) / range) * 255f);
+            float g = Mathf.Clamp01((sampler.SampleUVW(uvw) - min) / range) * 255f;
+
+            // Tinted where the cut passes through a structure, so an oblique slice carries the same reading
+            // as the ortho panels; the greyscale underneath stays visible.
+            if (sampler.HasLabels && sampler.TryLabelUVW(uvw, out int id))
+            {
+                Color32[] colours = structures.LabelColours;
+                if (id > 0 && colours != null && id < colours.Length && colours[id].a > 0)
+                {
+                    Color32 c = colours[id];
+                    return new Color32(
+                        (byte)Mathf.Lerp(g, c.r, labelTint),
+                        (byte)Mathf.Lerp(g, c.g, labelTint),
+                        (byte)Mathf.Lerp(g, c.b, labelTint), 255);
+                }
+            }
+
+            byte grey = (byte)g;
             return new Color32(grey, grey, grey, 255);
         }
     }
