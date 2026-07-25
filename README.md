@@ -2,7 +2,7 @@
 
 A crosshair-driven explorer for a T1 brain MRI. Move one plane through the head and the axial, coronal and sagittal slices, the oblique cut and the 3D volume all read the same point.
 
-Built for the Navian XR Engineer challenge on top of the provided base scene. One Unity scene ships as both a desktop executable driven by mouse and keyboard, and a PCVR scene driven by Quest hand tracking.
+One Unity scene ships as both a desktop executable driven by mouse and keyboard, and a PCVR scene driven by Quest hand tracking.
 
 ![Unity 6000.4.0f1](https://img.shields.io/badge/Unity-6000.4.0f1-black)
 ![Built-in RP](https://img.shields.io/badge/Pipeline-Built--in-blue)
@@ -10,7 +10,7 @@ Built for the Navian XR Engineer challenge on top of the provided base scene. On
 
 ## Why I built it this way
 
-The brief asks for a feature that explores, visualizes or interprets the MRI. The obvious version is a viewer with one slider per axis. I did not want three sliders that each move a different thing, because that is not how anyone reads a scan.
+The obvious way to explore a scan is a viewer with one slider per axis. I did not want three sliders that each move a different thing, because that is not how anyone reads a scan.
 
 Radiology works from a single point. You find something in one plane and you immediately want to know where that same point sits in the other two. So position became the only state in the app. There is one crosshair, it sits at the centre of a plane you can pick up and move, and every view in the scene is a different answer to the same question: what is here?
 
@@ -189,7 +189,7 @@ Assets/NavianChallenge/
   Data/Atlas/IXI025/                  MRI (.nii.gz) + 4 segmentation meshes
     Labels/StructureLabels.bytes      the baked label volume, rebuilt if deleted
   Scripts/
-    AtlasSceneController.cs           base project's orbit camera, superseded by Desktop/DesktopViewer.cs
+    AtlasSceneController.cs           starter orbit camera, superseded by Desktop/DesktopViewer.cs
     Core/                             works the same regardless of input rig
       VolumeSampler.cs                 world to voxel, the shared coordinate map
       SectionPlane.cs                  binds the cutout, reslices the oblique image
@@ -200,7 +200,7 @@ Assets/NavianChallenge/
       StructureVoxelizer.cs            rasterizes the meshes into the label volume
       StructureToggles.cs              structure visibility
       VolumeStyle.cs                   transfer function applied at runtime
-      AtlasVolumeLoader.cs             builds the MRI volume at runtime (base project)
+      AtlasVolumeLoader.cs             builds the MRI volume at runtime
     UI/                               interaction primitives both rigs consume
       MainMenu.cs                      sectioned menu (rail on the left, content on the right)
       ButtonSignal.cs                  one press event from poke or ray
@@ -219,14 +219,14 @@ Assets/NavianChallenge/
     PanelFrame.shader                 SDF rounded frame, stereo instanced
     TrajectoryLine.shader             unlit line drawn on top of the anatomy
     TrajectoryRay.shader              same, with the per-vertex gradient along the track
-  Editor/                             base project's scene-building tools, see note below
+  Editor/                             one-off scene-building tool, see note below
 Assets/ThirdParty/UnityVolumeRendering/
-docs/BASE_README.md                   the original base-project README
+docs/BASE_README.md                   notes that shipped with the starter assets
 ```
 
 Panels, menus and their frames are authored as real objects in the scene. Scripts hold behaviour only and reference what the scene already contains. Building the UI from code would have meant editing C# to nudge a label 2 mm, which is the wrong tool for that job. The one exception is the two slice textures (`MprScreens`, `SectionPlane`): their pixels come from voxel data, so there is nothing to author.
 
-`Editor/ChallengeSceneBuilder.cs` is the base project's tool for procedurally rebuilding `AtlasRoot` from the raw `.obj`/`.nii.gz` assets. It predates everything in this README and is not something this project's workflow depends on. Do not re-run it: it rebuilds the anatomy root from scratch and would discard the alignment and any scene edits made since.
+`Editor/ChallengeSceneBuilder.cs` procedurally rebuilds `AtlasRoot` from the raw `.obj`/`.nii.gz` assets. Nothing in the workflow depends on it. Do not re-run it: it rebuilds the anatomy root from scratch and would discard the alignment and any scene edits made since.
 
 ## Technical decisions
 
@@ -234,7 +234,7 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 
 **Nearest-neighbour sampling, not trilinear.** A slice is a texture lookup per pixel and the volume is only 150 slices deep, so nearest neighbour is fast and honest about the source resolution. It does mean the images go blocky when you push a panel close to your face.
 
-**A bounded cutout box, not an infinite plane.** Explained above. A plane also cannot show a cut that only affects the region you are pointing at.
+**A bounded cutout box, not an infinite plane.** An infinite plane takes the far side of the head with it, and cannot show a cut that affects only the region you are pointing at.
 
 **PCVR, not Quest standalone.** Volume rendering is raymarching, which is fragment-bound and takes many 3D texture samples per pixel. Stereo doubles the views and raises the framerate target at the same time. On a standalone Snapdragon GPU that is a research-grade optimisation problem. Over Link the desktop GPU renders and the existing budget still holds.
 
@@ -254,7 +254,7 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 
 ## Known limitations
 
-- **No region naming.** The plan was an offline atlas registration producing a label volume plus a `regions.json`, so the app could name the structure under the crosshair and move the crosshair to a named region. It is not built. The coordinate seam it would attach to is.
+- **No region naming.** Structures are labelled, anatomical regions are not, so the app cannot name what sits under the crosshair or move the crosshair to a named region. That needs a registered atlas, which this does not ship.
 - **Meshes are not clipped by the section plane.** The volume is cut, the meshes render straight through the cut. They need a matching clip plane in their own shader.
 - **You cannot click inside a 2D slice to move the crosshair.** The panels are readouts only, so navigation is always through the plane. This is the single biggest gap against a real MPR viewer.
 - **No window/level control on the slices.** Intensity is mapped straight to grey across the full range of the scan.
@@ -264,12 +264,12 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 - **One spatial layout for both builds.** Panel positions were tuned for a standing headset user, and the desktop camera starts where that user's head would be. It works, but a desktop-first layout would put the tools closer together.
 - **The section plane starts outside the volume**, so the oblique panel is black until you drag the plane into the head.
 - **Structures render at the scan's resolution**, so their edges are 0.94 mm steps rather than smooth surfaces. Label ids cannot be interpolated — a value halfway between two ids is a third structure — so the blockiness is the true resolution of the data rather than something to filter away.
-- **The label volume inherits the meshes' segmentation.** It is a rasterization of the structures the base project ships, so it is exactly as accurate as they are.
+- **The label volume inherits the meshes' segmentation.** It is a rasterization of the structure meshes, so it is exactly as accurate as they are.
 - **Structure colours sit at fixed opacities.** The shells in front of the vessels are kept faint so a trajectory stays visible through them, which is a layering compromise rather than a per-view setting.
 
 ## What I would add next
 
-In the order I would actually do them:
+In the order I would do them:
 
 1. **Click in a slice to move the crosshair.** Cheapest thing on this list and it closes the largest gap. The panels already know their own voxel mapping.
 2. **Offline atlas registration.** Register a labelled atlas (Harvard-Oxford) into IXI025's native grid with ANTsPy or SimpleITK, emit `IXI025_labels.nii.gz` on the same affine plus a `regions.json` of names, synonyms and centroids. The label-volume path it needs already exists — the structures use it — so this adds named anatomical regions to it. Registration stays out of Unity: it is slow, iterative and much better tooled in Python, and the JSON is a seam that lets registration quality improve later without touching app code.
@@ -280,4 +280,4 @@ In the order I would actually do them:
 
 ## Credits
 
-Base scene, MRI and segmentation meshes from the Navian XR Engineer challenge starter project, documented in [docs/BASE_README.md](docs/BASE_README.md). Volume rendering by [UnityVolumeRendering](https://github.com/mlavik1/UnityVolumeRendering). Dataset is IXI025 from the [IXI brain dataset](https://brain-development.org/ixi-dataset/). XR input from the Meta XR All-in-One SDK.
+MRI and segmentation meshes ship with the starter assets, documented in [docs/BASE_README.md](docs/BASE_README.md). Volume rendering by [UnityVolumeRendering](https://github.com/mlavik1/UnityVolumeRendering). Dataset is IXI025 from the [IXI brain dataset](https://brain-development.org/ixi-dataset/). XR input from the Meta XR All-in-One SDK.
