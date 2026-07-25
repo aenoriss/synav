@@ -39,9 +39,12 @@ namespace NavianChallenge
         public int maxSamplesPerEdge = 8;
 
         [Tooltip("The label field, rasterized ahead of time and stored on disk. With this set, starting the "
-               + "scene just unpacks it; the meshes are only rasterized when it is missing. Right-click this "
-               + "component and choose Bake Labels To Disk to make or refresh it.")]
+               + "scene just unpacks it. Left empty it fills itself in: the meshes are rasterized once and the "
+               + "result written here, so only the very first run pays for it. Right-click the component and "
+               + "choose Bake Labels To Disk to force a refresh after changing the meshes.")]
         public TextAsset bakedLabels;
+
+        const string BakedPath = "Assets/NavianChallenge/Data/Atlas/IXI025/Labels/StructureLabels.bytes";
 
         [Tooltip("Triangles rasterized before giving the frame back, for the fallback path that has no baked "
                + "asset. The four meshes come to a few hundred thousand triangles between them, which in one "
@@ -117,6 +120,11 @@ namespace NavianChallenge
                 yield break;
             }
 
+#if UNITY_EDITOR
+            // Having paid for the rasterization once, keep it, so no later run has to.
+            if (bakedLabels == null)
+                SaveBaked(data, dimX, dimY, dimZ);
+#endif
             Install(data, ds);
         }
 
@@ -208,6 +216,16 @@ namespace NavianChallenge
         // stale or mismatched file falls back to rasterizing rather than loading a wrong field.
         float[] LoadBaked(VolumeDataset ds)
         {
+#if UNITY_EDITOR
+            // A fresh clone has the file but no reference to it yet, so find it by path and keep it. Outside
+            // play the reference is written back into the scene, which is what a build reads.
+            if (bakedLabels == null)
+            {
+                bakedLabels = UnityEditor.AssetDatabase.LoadAssetAtPath<TextAsset>(BakedPath);
+                if (bakedLabels != null && !Application.isPlaying)
+                    UnityEditor.EditorUtility.SetDirty(this);
+            }
+#endif
             if (bakedLabels == null || bakedLabels.bytes == null || bakedLabels.bytes.Length == 0)
                 return null;
 
@@ -278,16 +296,21 @@ namespace NavianChallenge
                 return;
             }
 
-            const string folder = "Assets/NavianChallenge/Data/Atlas/IXI025/Labels";
-            Directory.CreateDirectory(folder);
-            string path = folder + "/StructureLabels.bytes";
-            File.WriteAllBytes(path, Encode(data, dimX, dimY, dimZ));
-            UnityEditor.AssetDatabase.ImportAsset(path);
+            SaveBaked(data, dimX, dimY, dimZ);
+        }
 
-            bakedLabels = UnityEditor.AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+        void SaveBaked(float[] data, int dimX, int dimY, int dimZ)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(BakedPath));
+            File.WriteAllBytes(BakedPath, Encode(data, dimX, dimY, dimZ));
+            UnityEditor.AssetDatabase.ImportAsset(BakedPath);
+
+            bakedLabels = UnityEditor.AssetDatabase.LoadAssetAtPath<TextAsset>(BakedPath);
             UnityEditor.EditorUtility.SetDirty(this);
-            Debug.Log("[StructureVoxelizer] baked " + marked + " voxels to " + path
-                    + " (" + (new FileInfo(path).Length / 1024) + " KB)");
+
+            if (logBuild)
+                Debug.Log("[StructureVoxelizer] wrote " + BakedPath
+                        + " (" + (new FileInfo(BakedPath).Length / 1024) + " KB); later runs unpack it");
         }
 #endif
 
