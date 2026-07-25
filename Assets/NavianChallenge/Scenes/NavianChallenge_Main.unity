@@ -11916,7 +11916,7 @@ MonoBehaviour:
   - mesh: {fileID: 344912974}
     id: 4
     label: Skin
-    colour: {r: 0.85, g: 0.7, b: 0.6, a: 0.35}
+    colour: {r: 0.85, g: 0.7, b: 0.6, a: 0.2}
   - mesh: {fileID: 1130260091}
     id: 3
     label: White Matter
@@ -11924,13 +11924,13 @@ MonoBehaviour:
   - mesh: {fileID: 968063480}
     id: 2
     label: Gray Matter
-    colour: {r: 0.7, g: 0.7, b: 0.75, a: 0.5}
+    colour: {r: 0.7, g: 0.7, b: 0.75, a: 0.08}
   - mesh: {fileID: 1611502059}
     id: 1
     label: Veins
     colour: {r: 0.95, g: 0.25, b: 0.28, a: 1}
   maxSamplesPerEdge: 8
-  logBuild: 1
+  logBuild: 0
 --- !u!1 &1572694317
 GameObject:
   m_ObjectHideFlags: 0
@@ -14227,7 +14227,8 @@ MonoBehaviour:
   corridorColour: {r: 0.369, g: 0.541, b: 0.847, a: 1}
   scalpThreshold: 0.12
   scalpSamples: 512
-  veins: {fileID: 1611502059}
+  structures: {fileID: 1536434298}
+  veinLabelId: 1
   corridorMm: 3
   safeColour: {r: 0.45, g: 0.85, b: 0.55, a: 1}
   hitColour: {r: 0.95, g: 0.3, b: 0.32, a: 1}

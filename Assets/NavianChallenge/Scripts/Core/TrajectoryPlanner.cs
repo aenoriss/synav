@@ -18,12 +18,11 @@ namespace NavianChallenge
     // result (the veins move with the volume too). So the expensive vein scan runs only when the
     // trajectory or the corridor changes, never per frame.
     //
-    // The vein check measures the shortest distance from the track to the vein geometry and flags it when
-    // that falls within the corridor radius. It walks the mesh vertices rather than sweeping a physics
-    // sphere, because a concave MeshCollider only answers raycasts, not sweeps, so a SphereCast silently
-    // misses. The distance is measured in patient millimetres: IXI025's voxels are 0.9375 x 0.9375 x 1.2 mm,
-    // so a single world-to-mm ratio taken along the track's own direction and then applied as an isotropic
-    // radius would be wrong by close to that anisotropy whenever the nearest vein sits off-axis.
+    // The vein check reads the structure labels baked into the volume rather than the vein mesh, so the
+    // question it answers is "does this track pass through vessel voxels", which is the surgical question.
+    // A distance-to-surface test asks something subtly different and lets a vessel thicker than the corridor
+    // slip through. The corridor is measured in patient millimetres: IXI025's voxels are
+    // 0.9375 x 0.9375 x 1.2 mm, so a radius taken in world units would be wrong by that anisotropy.
     public class TrajectoryPlanner : MonoBehaviour
     {
         [Tooltip("The point a Set captures. The section plane centre, which is the crosshair.")]
@@ -56,8 +55,10 @@ namespace NavianChallenge
         public int scalpSamples = 512;
 
         [Header("Vein check")]
-        [Tooltip("The vein mesh. The corridor is measured against its geometry.")]
-        public Transform veins;
+        [Tooltip("Supplies the voxel label volume the corridor is tested against.")]
+        public StructureVoxelizer structures;
+        [Tooltip("The label id standing for vessels in that volume.")]
+        public int veinLabelId = 1;
         [Tooltip("Safety corridor diameter in millimetres. Driven by the slider.")]
         public float corridorMm = 3f;
 
@@ -70,8 +71,10 @@ namespace NavianChallenge
         public Color rayEntryColour = new Color(0.369f, 0.541f, 0.847f);
         public Color rayTargetColour = new Color(0.13f, 0.38f, 0.70f);
 
+        // Points sampled around the track at the corridor radius, per step along it.
+        const int CorridorSamples = 8;
+
         VolumeSampler sampler;
-        Vector3[] veinVerticesMm;
         bool hasEntry, hasTarget;
 
         // The corridor tube's last fit, so it is re-shaped only when the markers or the width move.
@@ -194,22 +197,13 @@ namespace NavianChallenge
 
             bool crossesVein = false;
             float veinDepthMm = 0f;
-            if ((target - entry).sqrMagnitude > 1e-10f && EnsureVeins())
+            if ((target - entry).sqrMagnitude > 1e-10f && EnsureLabels())
             {
-                Vector3 entryMm = sampler.WorldToPatientMm(entry);
-                Vector3 targetMm = sampler.WorldToPatientMm(target);
-
-                float nearestMm = float.MaxValue;
-                float nearestT = 0f;
-                for (int i = 0; i < veinVerticesMm.Length; i++)
-                {
-                    float d = DistanceToSegment(veinVerticesMm[i], entryMm, targetMm, out float t);
-                    if (d < nearestMm) { nearestMm = d; nearestT = t; }
-                }
-                if (nearestMm <= corridorMm * 0.5f)
+                float hit = FirstVeinHit(entry, target);
+                if (hit >= 0f)
                 {
                     crossesVein = true;
-                    veinDepthMm = depthMm * nearestT;
+                    veinDepthMm = depthMm * hit;
                 }
             }
 
@@ -301,23 +295,60 @@ namespace NavianChallenge
             return true;
         }
 
-        // Cached once in patient millimetres and never recomputed: the veins share the volume's parent, so
-        // wherever the volume is dragged the two move together and their relative geometry -- all this cache
-        // records -- never changes.
-        bool EnsureVeins()
+        bool EnsureLabels()
         {
-            if (veinVerticesMm != null) return true;
-            if (veins == null || !EnsureSampler()) return false;
-            var filter = veins.GetComponent<MeshFilter>();
-            if (filter == null || filter.sharedMesh == null) return false;
+            if (!EnsureSampler() || structures == null || !structures.Built || structures.LabelDataset == null)
+                return false;
 
-            Vector3[] local = filter.sharedMesh.vertices;
-            Matrix4x4 toWorld = veins.localToWorldMatrix;
-            veinVerticesMm = new Vector3[local.Length];
-            for (int i = 0; i < local.Length; i++)
-                veinVerticesMm[i] = sampler.WorldToPatientMm(toWorld.MultiplyPoint3x4(local[i]));
-            return true;
+            sampler.UseLabels(structures.LabelDataset);
+            return sampler.HasLabels;
         }
+
+        // Where the track first meets a vessel, as a fraction along entry-to-target, or -1 if it stays clear.
+        //
+        // Reading the vein voxels directly means a track driven through a vessel registers as a hit rather
+        // than as a distance that happens to be small -- a thick vessel used to slip past a corridor narrower
+        // than its own radius. The corridor is still honoured: each step samples the centre line and a ring at
+        // the corridor radius, so a track threading close by a vessel flags as well as one going through it.
+        float FirstVeinHit(Vector3 entry, Vector3 target)
+        {
+            Vector3 axis = target - entry;
+            float lenWorld = axis.magnitude;
+            float lenMm = sampler.PatientDistanceMm(entry, target);
+            if (lenWorld < 1e-6f || lenMm < 1e-5f)
+                return -1f;
+
+            Vector3 dir = axis / lenWorld;
+            float radiusWorld = corridorMm * 0.5f * (lenWorld / lenMm);
+
+            // Two samples per millimetre, which is finer than the voxels, so nothing is stepped over.
+            int steps = Mathf.Clamp(Mathf.CeilToInt(lenMm * 2f), 1, 2048);
+
+            // A pair of axes across the track, to sweep the corridor instead of only its centre line.
+            Vector3 across = Vector3.Normalize(Vector3.Cross(dir, Mathf.Abs(dir.y) < 0.9f ? Vector3.up : Vector3.right));
+            Vector3 up = Vector3.Cross(dir, across);
+
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = (float)i / steps;
+                Vector3 p = entry + axis * t;
+                if (IsVein(p))
+                    return t;
+
+                if (radiusWorld <= 0f)
+                    continue;
+
+                for (int k = 0; k < CorridorSamples; k++)
+                {
+                    float a = k * Mathf.PI * 2f / CorridorSamples;
+                    if (IsVein(p + (across * Mathf.Cos(a) + up * Mathf.Sin(a)) * radiusWorld))
+                        return t;
+                }
+            }
+            return -1f;
+        }
+
+        bool IsVein(Vector3 world) => sampler.TryLabelAtWorld(world, out int id) && id == veinLabelId;
 
         // Index 0 of the line is the entry (see LateUpdate), so gradient stop 0 is the entry colour.
         static Gradient EntryToTarget(Color entry, Color target)
@@ -338,11 +369,5 @@ namespace NavianChallenge
             return g;
         }
 
-        static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b, out float t)
-        {
-            Vector3 ab = b - a;
-            t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / Mathf.Max(1e-8f, ab.sqrMagnitude));
-            return Vector3.Distance(p, a + ab * t);
-        }
     }
 }

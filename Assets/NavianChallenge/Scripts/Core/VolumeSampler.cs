@@ -52,6 +52,37 @@ namespace NavianChallenge
                 Mathf.Clamp((int)(uvw.z * dataset.dimZ), 0, dataset.dimZ - 1));
         }
 
+        // An optional second volume on the same grid, holding a structure id per voxel. Sampling it through
+        // the same world-to-voxel maths as the intensity is the point: a label lookup and an intensity lookup
+        // at one world position are guaranteed to describe the same voxel.
+        VolumeDataset labels;
+
+        public void UseLabels(VolumeDataset labelDataset)
+        {
+            labels = labelDataset != null
+                  && labelDataset.dimX == dataset.dimX
+                  && labelDataset.dimY == dataset.dimY
+                  && labelDataset.dimZ == dataset.dimZ
+                   ? labelDataset : null;
+        }
+
+        public bool HasLabels => labels != null;
+
+        // The structure id at a world point, or 0 for unlabelled. False when there is no label volume or the
+        // point is outside the scan.
+        public bool TryLabelAtWorld(Vector3 world, out int id)
+        {
+            id = 0;
+            if (labels == null || !TryWorldToUVW(world, out Vector3 uvw))
+                return false;
+
+            id = Mathf.RoundToInt(labels.GetData(
+                Mathf.Clamp((int)(uvw.x * dataset.dimX), 0, dataset.dimX - 1),
+                Mathf.Clamp((int)(uvw.y * dataset.dimY), 0, dataset.dimY - 1),
+                Mathf.Clamp((int)(uvw.z * dataset.dimZ), 0, dataset.dimZ - 1)));
+            return true;
+        }
+
         // The world point at the centre of the volume box -- a point guaranteed to be inside the head, the
         // interior end of a ray cast out to find the scalp.
         public Vector3 VolumeCenterWorld => cube.TransformPoint(Vector3.zero);
