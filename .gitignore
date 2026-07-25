@@ -44,3 +44,7 @@ Thumbs.db
 .idea/
 .vscode/
 
+
+# Unity crash-recovery scene dumps
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
