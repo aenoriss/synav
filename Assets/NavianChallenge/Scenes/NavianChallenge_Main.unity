@@ -1963,7 +1963,7 @@ MonoBehaviour:
     button: {fileID: 1231124627}
     face: {fileID: 1911633871}
     label: {fileID: 1939422482}
-    colour: {r: 0.96, g: 0.72, b: 0.16, a: 1}
+    colour: {r: 0.68, g: 0.35, b: 0.96, a: 1}
   - labelId: 1
     button: {fileID: 57673929}
     face: {fileID: 477990038}
@@ -1973,7 +1973,7 @@ MonoBehaviour:
     button: {fileID: 1114536243}
     face: {fileID: 1121484877}
     label: {fileID: 862218731}
-    colour: {r: 0.6, g: 0.4, b: 0.88, a: 1}
+    colour: {r: 0.98, g: 0.72, b: 0.58, a: 1}
   offTint: {r: 0.16862746, g: 0.21960784, b: 0.3019608, a: 1}
 --- !u!4 &233155852
 Transform:
@@ -11920,11 +11920,11 @@ MonoBehaviour:
   - mesh: {fileID: 344912974}
     id: 4
     label: Skin
-    colour: {r: 0.6, g: 0.4, b: 0.88, a: 0.2}
+    colour: {r: 0.98, g: 0.72, b: 0.58, a: 0.2}
   - mesh: {fileID: 1130260091}
     id: 3
     label: White Matter
-    colour: {r: 0.96, g: 0.72, b: 0.16, a: 0.5}
+    colour: {r: 0.68, g: 0.35, b: 0.96, a: 0.5}
   - mesh: {fileID: 968063480}
     id: 2
     label: Gray Matter
