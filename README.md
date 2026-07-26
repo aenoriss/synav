@@ -2,7 +2,7 @@
 
 # Synav
 
-A crosshair-driven explorer for a T1 brain MRI. Move one plane through the head and the axial, coronal and sagittal slices, the oblique cut and the 3D volume all read the same point.
+A crosshair-driven explorer for a T1 brain MRI. Move one plane through the head; the three axis slices, the oblique cut and the raymarched volume all follow the same point. Plan a trajectory and it reports the depth in patient millimetres and whether the track crosses a vessel.
 
 ![Unity 6000.4.0f1](https://img.shields.io/badge/Unity-6000.4.0f1-black)
 ![Built-in RP](https://img.shields.io/badge/Pipeline-Built--in-blue)
@@ -18,15 +18,17 @@ A crosshair-driven explorer for a T1 brain MRI. Move one plane through the head 
 
 ## Builds
 
-Windows executable and Quest APK: [Google Drive](https://drive.google.com/drive/folders/1loPMYEketRLWhHPjBaNW3xdxENnu0z5K)
+Windows executable and Quest APK: [Google Drive](https://drive.google.com/drive/folders/1loPMYEketRLWhHPjBaNW3xdxENnu0z5K?usp=sharing)
 
 Run `Synav.exe` on desktop, or sideload `Synav.apk` with `adb install -r Synav.apk`. Neither needs the project or the editor.
 
 ## Why I built it
 
-A scan is three stacks of images plus a pile of segmented surfaces, and most viewers make you drive those separately: one slider per axis, a 3D view that is its own mode, meshes that sit beside the scan instead of in it. That arrangement suits reading a study. It suits planning badly, because planning asks about a *point* — what is here, what surrounds it, and can I reach it without crossing something.
+A scan is three stacks of images and a pile of segmented surfaces, and most viewers make you drive them separately: one slider per axis, a 3D view in its own mode, meshes sitting beside the scan rather than inside it. That works for reading a study. It works badly for planning, because planning is a question about a *point* — what is here, what surrounds it, and can I reach it without crossing something.
 
-So the app holds one piece of state: the pose of a plane you pick up and move. The three axis slices, the oblique reslice and the cut through the volume are all readouts of that single transform, so they cannot disagree with each other. Segmentation is rasterized into the scan's own voxel grid, which turns "is there a vessel here" into an array lookup instead of a mesh intersection, and lets the same data colour the 3D render, tint every 2D slice, and answer the corridor check.
+So the app holds one piece of state: the pose of a plane you pick up and move. Every view is a readout of that single transform, so no two of them can disagree.
+
+Segmentation is rasterized into the scan's own voxel grid. That turns "is there a vessel here" into an array lookup rather than a mesh intersection, and it lets one set of data colour the 3D render, tint every 2D slice, and answer the corridor check.
 
 ## What it does
 
@@ -67,7 +69,7 @@ flowchart LR
 
 ### 1. One coordinate map
 
-Everything that touches voxels goes through `VolumeSampler`. UnityVolumeRendering draws the dataset into a unit cube spanning -0.5 to 0.5 in its own local space, so a world point becomes a texture coordinate by inverse-transforming it and shifting by half a unit:
+Everything that touches voxels goes through `VolumeSampler`. UnityVolumeRendering draws the dataset into a unit cube spanning -0.5 to 0.5 in its own local space. A world point becomes a texture coordinate by inverse-transforming it into that cube and shifting by half a unit:
 
 ```csharp
 Vector3 local = cube.InverseTransformPoint(world);
@@ -75,7 +77,7 @@ uvw = local + Vector3.one * 0.5f;          // 0..1 across the volume
 voxel = Vector3Int.FloorToInt(uvw * dims); // dims = (256, 256, 150)
 ```
 
-One class owning that is what keeps the slices, the cut and the volume from drifting apart, and it is where the labels plug in: an intensity lookup and a label lookup at one world position are guaranteed to hit the same voxel.
+Keeping that in one class is what stops the slices, the cut and the volume drifting apart. It is also where the labels plug in: an intensity lookup and a label lookup at the same world position always land on the same voxel.
 
 ### 2. The three axis slices
 
@@ -85,7 +87,7 @@ Panels are sized in millimetres. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so 
 
 Intensity maps straight to grey, tinted toward a structure's colour where one is labelled. Tinting keeps the underlying intensities readable, which is the point of looking at a slice. The transfer function only shapes the 3D volume: the render is an interpretation, the slices are the evidence.
 
-Each panel prints its slice index, one-based out of the stack depth, the way a viewer prints an image number. Reformatted from one volume there is no stored image to number, so it is the reslice index along the axis that view cuts across.
+Each panel prints its slice index the way a clinical viewer prints an image number, one-based out of the stack depth. Nothing here is a stored image, so the number is the reslice index along the axis that view cuts across.
 
 ### 3. The oblique cut
 
@@ -116,11 +118,11 @@ The bake depends only on the meshes and the grid, both fixed, so it is stored be
 
 ### 5. Trajectory planning
 
-`TrajectoryPlanner` captures entry and target from the crosshair on two button presses, draws a line between them, and reports depth in patient millimetres through `VolumeSampler.PatientDistanceMm`, because the number that matters is how far an instrument actually travels through the patient.
+`TrajectoryPlanner` captures entry and target from the crosshair on two button presses and draws a line between them. Depth comes back in patient millimetres through `VolumeSampler.PatientDistanceMm`: the number that matters is how far an instrument actually travels through the patient, not how long the line is in the scene.
 
 Both markers are children of the volume, so grabbing the head and turning it carries the markers, the line and the readout with it. Depth and the vein warning are patient-space measurements and do not change because the head was picked up.
 
-An entry point only means anything on the surface, so setting one projects it onto the scalp: a ray from the head's centre marches intensity for the air-to-tissue boundary, inward from outside, so an internal air pocket like a sinus is never mistaken for the exterior.
+An entry point only means anything on the surface, so setting one projects it onto the scalp. A ray from the head's centre marches the volume's intensity looking for the air-to-tissue boundary, working inward from outside the head. Marching that direction is what stops an internal air pocket, a sinus say, being taken for the exterior.
 
 The safety corridor walks the track through the label volume, sampling the centre line and a ring of 8 offsets at the corridor radius:
 
@@ -152,7 +154,7 @@ if (Input.GetMouseButtonDown(0))
     WhenSelected?.Invoke();
 ```
 
-Everything downstream — buttons, hover tints, menus — cannot tell them apart. `DesktopMode` picks the rig at startup: an XR loader is selected before the scene loads, but the session only confirms a frame or more later, so it starts on the headset whenever a loader is present and falls back to desktop if the display never begins presenting.
+Everything downstream — buttons, hover tints, menus — cannot tell them apart. `DesktopMode` picks the rig at startup: it starts on the headset whenever an XR loader is present, and falls back to desktop if the display never begins presenting.
 
 Panels carry an inert `RayInteractable` over their whole face, so the ray stays lit while travelling between buttons instead of blinking off over the gaps. On the MPR board that backdrop also carries `MouseGrabExempt`, so a click on the images reads as pointing rather than grabbing.
 
@@ -160,7 +162,7 @@ Panels carry an inert `RayInteractable` over their whole face, so the ray stays 
 
 Level and width choose which intensities are drawn, the control a radiologist reaches for first. Narrowing the window raises contrast across whatever survives inside it; sliding the level walks that band up and down the tissue types.
 
-Air is excluded underneath both sliders. It is the darkest thing in the scan, there is nothing in it to see, and it is most of the volume's bounding box — so a sample below the floor stops after one texture read instead of four.
+Air stays excluded underneath both sliders. It is the darkest thing in the scan and there is nothing in it to see, yet it fills most of the volume's bounding box. A sample below the floor stops after one texture read instead of four.
 
 ```csharp
 float half = width * 0.5f;
@@ -169,7 +171,7 @@ VisibleMax = Mathf.Max(VisibleMin + 0.01f, Mathf.Min(1f, level + half));
 volume.SetVisibilityWindow(VisibleMin, VisibleMax);
 ```
 
-At the default full width the floor alone drops about 58% of samples on the cheap path, and costs 0.4% of vein voxels — vessels sitting at intensities below the noise threshold.
+At the default full width, the floor alone sends about 58% of samples down that cheap path. It costs 0.4% of vein voxels, vessels sitting at intensities below the floor.
 
 ## Tech stack
 
@@ -261,7 +263,7 @@ The GPU side is the real constraint — raymarching is fragment-bound and stereo
 
 **Explicit sorting orders on the transparent panels.** Unity sorts transparent geometry by distance to camera, unreliable when a panel's backing, image, frame and text sit almost on top of each other. Each layer's draw order is set by hand.
 
-**The headset build runs on the Quest itself.** A desktop GPU over Link absorbs raymarching; a mobile GPU has to be handed less to shade. The air floor takes most of the bounding box off the expensive path, foveated rendering shades the periphery of each eye buffer at lower resolution, and the eye buffer is a fixed size — one that rescales every frame reads as judder more readily than a steady lower framerate does.
+**The headset build runs on the Quest itself.** A desktop GPU over Link absorbs raymarching; a mobile GPU has to be handed less to shade. Three things buy that back. The air floor takes most of the bounding box off the expensive path. Foveated rendering shades the periphery of each eye buffer at lower resolution. And the eye buffer is a fixed size, because one that rescales every frame reads as judder more readily than a steady lower framerate does.
 
 **Structure colours are chosen against a greyscale base.** The scan spends the whole lightness range on anatomy, so chroma is the only channel left to separate a label from tissue. Gray and white matter border each other everywhere, so they take opposing warm and cool hues while keeping the relationship that distinguishes them on a T1: white matter is the brighter of the two.
 
