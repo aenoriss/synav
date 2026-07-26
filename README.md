@@ -2,11 +2,12 @@
 
 A crosshair-driven explorer for a T1 brain MRI. Move one plane through the head and the axial, coronal and sagittal slices, the oblique cut and the 3D volume all read the same point.
 
-One Unity scene ships as both a desktop executable driven by mouse and keyboard, and a PCVR scene driven by Quest hand tracking.
+One Unity scene ships as a desktop executable driven by mouse and keyboard, and as a Quest build driven by hand tracking, running on the headset itself or over Link.
 
 ![Unity 6000.4.0f1](https://img.shields.io/badge/Unity-6000.4.0f1-black)
 ![Built-in RP](https://img.shields.io/badge/Pipeline-Built--in-blue)
 ![Windows](https://img.shields.io/badge/Build-Windows%20x64-informational)
+![Quest](https://img.shields.io/badge/Build-Quest%20(Android%20ARM64)-informational)
 
 ## Why I built it this way
 
@@ -25,7 +26,8 @@ The three axis slices, the oblique cut and the cross-section of the volume are a
 - Carries skin, gray matter, white matter and veins as labelled voxels inside the scan, coloured in the volume and tinted into every 2D slice, each shown or hidden from a menu
 - Plans a straight entry-to-target trajectory, with depth in true patient millimetres and a warning when the track runs through vessel voxels
 - Holds the entry point on the scalp and lets you drag it over the skull to hunt for an approach that clears the vessels
-- Runs on desktop with mouse and keyboard, or in PCVR with hand tracking, from the same scene
+- Windows the volume by intensity, the control a radiologist reaches for first, with air excluded whatever the sliders are set to
+- Runs on desktop with mouse and keyboard, or on a Quest with hand tracking, from the same scene
 
 ## How it works
 
@@ -154,7 +156,7 @@ Panels also carry an inert `RayInteractable` over their whole face. It does noth
 
 ### Desktop
 
-Download the build and run `NavianChallenge.exe`, or open the project in Unity `6000.4.0f1`, open `Assets/NavianChallenge/Scenes/NavianChallenge_Main.unity` and press Play. No headset needed. The scene detects that there is no XR device and starts the desktop rig.
+Download the build and run `Synav.exe`, or open the project in Unity `6000.4.0f1`, open `Assets/NavianChallenge/Scenes/NavianChallenge_Main.unity` and press Play. No headset needed. The scene detects that there is no XR device and starts the desktop rig.
 
 | Input | Action |
 | - | - |
@@ -173,13 +175,25 @@ Download the build and run `NavianChallenge.exe`, or open the project in Unity `
 
 Start by dragging the section plane into the head. The oblique panel is black until the plane meets the volume. The **Plan** tab (next to **Filter** on the main menu) holds the trajectory tool: Set entry and Set target capture the crosshair's current position, and a slider sets the vein safety-corridor diameter.
 
-### PCVR (optional)
+### Quest
 
-The XR path targets Quest over Link or Air Link, not standalone. Connect the headset, start Link, then press Play. Turn your left palm towards your face to bring up the wrist menu, which shows and hides the three tools. Buttons take a poke or a point and pinch. Panels are grabbed with either hand.
+Turn your left palm towards your face to bring up the wrist menu, which shows and hides the three tools. Buttons take a poke or a point and pinch. Panels are grabbed by their frame with either hand, and the images inside them take a point rather than a grab.
+
+Sideload `Synav.apk` to run it on the headset:
+
+```
+adb install -r Synav.apk
+```
+
+Or run it over Link: connect the headset, start Link, then press Play in the editor. The same scene serves both, and picks its rig from whether an XR device came up.
 
 ### Building it
 
-Build target is Windows x64, Built-in pipeline, and the only scene in the build list is `NavianChallenge_Main`. `File > Build Settings > Build`. The player is set to open windowed at 1600 x 900 and is resizable.
+Built-in pipeline, and the only scene in the build list is `NavianChallenge_Main`.
+
+For desktop, target Windows x64 and `File > Build Settings > Build`. The player opens windowed at 1600 x 900 and is resizable.
+
+For the headset, switch the target to Android, IL2CPP with ARM64 and Vulkan. The two builds are written side by side and share nothing but the scene.
 
 ## Repo layout
 
@@ -197,6 +211,8 @@ Assets/NavianChallenge/
       TrajectoryPlanner.cs             entry/target depth and the corridor check
       DraggableEntry.cs                holds the entry marker on the scalp while it is dragged
       CorridorSlider.cs                drag slider for the corridor diameter
+      WindowLevel.cs                   window and level over the volume, air always excluded
+      WindowLevelSlider.cs             the two sliders that drive it
       StructureVoxelizer.cs            rasterizes the meshes into the label volume
       StructureToggles.cs              structure visibility
       VolumeStyle.cs                   transfer function applied at runtime
@@ -205,6 +221,7 @@ Assets/NavianChallenge/
       MainMenu.cs                      sectioned menu (rail on the left, content on the right)
       ButtonSignal.cs                  one press event from poke or ray
       ButtonVisual.cs                  hover and press tint
+      DragSlider.cs                    drag behaviour shared by the panel sliders
     Desktop/                          only meaningful without a headset
       DesktopMode.cs                   picks the rig at startup
       DesktopViewer.cs                 desktop camera and on-screen controls
@@ -215,6 +232,7 @@ Assets/NavianChallenge/
     XR/                               only meaningful with a headset
       WristAnchor.cs                   wrist pose from joint geometry, palm-facing reveal
       WristMenu.cs                     shows and hides the three tools
+      Foveation.cs                     shades the periphery of the eye buffer at lower resolution
   Shaders/
     PanelFrame.shader                 SDF rounded frame, stereo instanced
     TrajectoryLine.shader             unlit line drawn on top of the anatomy
@@ -236,7 +254,7 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 
 **A bounded cutout box, not an infinite plane.** An infinite plane takes the far side of the head with it, and cannot show a cut that affects only the region you are pointing at.
 
-**PCVR, not Quest standalone.** Volume rendering is raymarching, which is fragment-bound and takes many 3D texture samples per pixel. Stereo doubles the views and raises the framerate target at the same time. On a standalone Snapdragon GPU that is a research-grade optimisation problem. Over Link the desktop GPU renders and the existing budget still holds.
+**The headset build runs on the Quest itself, not only over Link.** Volume rendering is raymarching: fragment-bound, taking many 3D texture samples per pixel, and stereo doubles the views while raising the framerate target. A desktop GPU over Link absorbs that; a mobile GPU has to be handed less to shade. So the headset build spends its budget on fragments rather than on geometry. The intensity window excludes air, and a sample below the floor stops after one texture read instead of four, which takes most of the volume's bounding box off the expensive path. Foveated rendering shades the periphery of each eye buffer at lower resolution, away from where a slice is being read. The eye buffer is a fixed size rather than one resized against a moving GPU budget, since a buffer that rescales every frame reads as judder more readily than a steady lower framerate does.
 
 **The section plane is the only handle.** There is no separate crosshair object to lose. Moving the thing that cuts is the same gesture as moving the thing that measures.
 
@@ -257,7 +275,7 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 - **No region naming.** Structures are labelled, anatomical regions are not, so the app cannot name what sits under the crosshair or move the crosshair to a named region. That needs a registered atlas, which this does not ship.
 - **Meshes are not clipped by the section plane.** The volume is cut, the meshes render straight through the cut. They need a matching clip plane in their own shader.
 - **You cannot click inside a 2D slice to move the crosshair.** The panels are readouts only, so navigation is always through the plane. This is the single biggest gap against a real MPR viewer.
-- **No window/level control on the slices.** Intensity is mapped straight to grey across the full range of the scan.
+- **The window does not reach the 2D slices.** The volume honours a window and level; the axial, coronal, sagittal and oblique images still map intensity straight to grey across the scan's full range.
 - **The 2D panels do not draw the mesh contours.** A real planner outlines the segmentation on every slice.
 - **Reslicing runs on the main thread.** A 192 x 192 oblique reslice is recomputed on every plane move. It holds a comfortable framerate at this resolution, but it does not scale to a larger scan or a bigger panel.
 - **The wrist menu needs hand tracking.** With controllers in hand it does not appear. The buttons themselves still work by ray.
@@ -275,7 +293,7 @@ In the order I would do them:
 2. **Offline atlas registration.** Register a labelled atlas (Harvard-Oxford) into IXI025's native grid with ANTsPy or SimpleITK, emit `IXI025_labels.nii.gz` on the same affine plus a `regions.json` of names, synonyms and centroids. The label-volume path it needs already exists — the structures use it — so this adds named anatomical regions to it. Registration stays out of Unity: it is slow, iterative and much better tooled in Python, and the JSON is a seam that lets registration quality improve later without touching app code.
 3. **An LLM agent to move the crosshair.** With `regions.json` in place, an agent resolves a typed or spoken request, "show me the left ventricle", "go to the thalamus", against region names, synonyms and descriptions, then moves the crosshair to the matched centroid. The interesting part is robust request understanding, not string equality: an agent handles synonyms, typos and compound descriptions a lookup table can't.
 4. **Clip the meshes with the same plane.** One clip plane uniform in the mesh shader, fed from the same transform that drives the cutout.
-5. **Window/level and trilinear sampling** on the 2D panels, which is what makes slices actually readable in a clinical viewer.
+5. **Carry the window through to the 2D panels**, with trilinear sampling alongside it, which is what makes slices actually readable in a clinical viewer.
 6. **Move reslicing off the main thread**, either to a compute shader or the job system, so the panel resolution stops being a framerate decision.
 
 ## Credits
