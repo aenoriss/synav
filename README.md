@@ -243,21 +243,11 @@ Built-in pipeline, one scene in the build list. Desktop targets Windows x64 and 
 
 **Structures are labelled voxels.** A label volume answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Surfaces answer a different question and have to be intersected to get there.
 
-**The label volume is baked to an artifact.** Its inputs are fixed, and rasterizing the meshes in one frame stalls long enough for an XR compositor to drop the app.
-
 **The corridor is measured in patient millimetres.** Voxels are anisotropic at 0.9375 x 0.9375 x 1.2 mm, so a radius in world units is wrong by that anisotropy in whichever direction the nearest vessel happens to lie.
-
-**The section plane is the only handle.** There is no separate crosshair object to lose; moving the thing that cuts is the same gesture as moving the thing that measures.
-
-**Explicit sorting orders on the transparent panels.** Unity sorts transparent geometry by distance to camera, unreliable when a panel's backing, image, frame and text sit almost on top of each other. Each layer's draw order is set by hand.
-
-**The headset build runs on the Quest itself.** A desktop GPU over Link absorbs raymarching; a mobile GPU has to be handed less to shade. Three things buy that back. The air floor takes most of the bounding box off the expensive path. Foveated rendering shades the periphery of each eye buffer at lower resolution. And the eye buffer is a fixed size, because one that rescales every frame reads as judder more readily than a steady lower framerate does.
 
 **Structure colours are chosen against a greyscale base.** The scan spends the whole lightness range on anatomy, so chroma is the only channel left to separate a label from tissue. Gray and white matter border each other everywhere, so they take opposing warm and cool hues while keeping the relationship that distinguishes them on a T1: white matter is the brighter of the two.
 
 **Two colour systems, kept apart.** Panel chrome uses a navy/steel palette. The axial/coronal/sagittal frames use the radiology convention, green/red/blue, and the structure and safety colours are anatomical and status colours. Branding the medical conventions would have made them wrong.
-
-**UI is authored in the scene.** Panels, menus and frames are real objects; scripts hold behaviour and reference what the scene already contains. Building it from code would mean editing C# to nudge a label 2 mm. The exception is the two slice textures, whose pixels come from voxel data.
 
 ## Repo layout
 
