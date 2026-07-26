@@ -24,11 +24,11 @@ Run `Synav.exe` on desktop, or sideload `Synav.apk` with `adb install -r Synav.a
 
 ## Why I built it
 
-A scan is three stacks of images and a pile of segmented surfaces, and most viewers make you drive them separately: one slider per axis, a 3D view in its own mode, meshes sitting beside the scan rather than inside it. That works for reading a study. It works badly for planning, because planning is a question about a *point*: what is here, what surrounds it, and can I reach it without crossing something.
+A scan is three stacks of images and a pile of segmented surfaces, and most viewers make you drive them separately: one slider per axis, a 3D view in its own mode, meshes sitting beside the scan. That works for reading a study. It works badly for planning, because planning is a question about a *point*: what is here, what surrounds it, and can I reach it without crossing something.
 
 So the app holds one piece of state: the pose of a plane you pick up and move. Every view is a readout of that single transform, so no two of them can disagree.
 
-Segmentation is rasterized into the scan's own voxel grid. That turns "is there a vessel here" into an array lookup rather than a mesh intersection, and it lets one set of data colour the 3D render, tint every 2D slice, and answer the corridor check.
+Segmentation is rasterized into the scan's own voxel grid. That turns "is there a vessel here" into an array lookup, and it lets one set of data colour the 3D render, tint every 2D slice, and answer the corridor check.
 
 ## What it does
 
@@ -77,7 +77,7 @@ uvw = local + Vector3.one * 0.5f;          // 0..1 across the volume
 voxel = Vector3Int.FloorToInt(uvw * dims); // dims = (256, 256, 150)
 ```
 
-Keeping that in one class is what holds the slices, the cut and the volume on the same coordinates. It is also where the labels plug in: an intensity lookup and a label lookup at the same world position always land on the same voxel.
+Keeping that in one class holds the slices, the cut and the volume on the same coordinates, and it is where the labels plug in: an intensity lookup and a label lookup at the same world position always land on the same voxel. A registered atlas would plug in through the same class later.
 
 ### 2. The three axis slices
 
@@ -85,7 +85,7 @@ Keeping that in one class is what holds the slices, the cut and the volume on th
 
 Panels are sized in millimetres. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so the scan measures 240 x 240 x 180 mm: coronal and sagittal come out 4:3, axial square, and the head keeps its proportions in every view.
 
-Intensity maps straight to grey, tinted toward a structure's colour where one is labelled. Tinting keeps the underlying intensities readable, which is the point of looking at a slice. The transfer function only shapes the 3D volume: the render is an interpretation, the slices are the evidence.
+Intensity maps straight to grey, tinted toward a structure's colour where one is labelled. Tinting keeps the underlying intensities readable, which is the point of looking at a slice. The transfer function only shapes the 3D volume. It never touches the 2D slices, which stay a straight readout of intensity.
 
 Each panel prints its slice index the way a clinical viewer prints an image number, one-based out of the stack depth. Nothing here is a stored image, so the number is the reslice index along the axis that view cuts across.
 
@@ -102,7 +102,7 @@ Vector3 acrossStep = toUVW.MultiplyVector(new Vector3(step, 0f, 0f));
 Vector3 downStep   = toUVW.MultiplyVector(new Vector3(0f, step, 0f));
 ```
 
-The MPR board's fourth panel draws that same 192 x 192 texture, so the 3D cut and the 2D oblique slice can never show different things. The cutout box also moves to whichever side of the plane you stand on each frame, so the open face follows you.
+The MPR board's fourth panel draws that same 192 x 192 texture; the 3D cut and the 2D oblique slice can never show different things. The cutout box also moves to whichever side of the plane you stand on each frame, keeping the open face toward you.
 
 ### 4. Structures as voxels
 
@@ -112,7 +112,7 @@ The mapping needs no calibration. `MeshesRoot` carries the same transform as the
 
 Reading a structure as voxels lets the trajectory check answer the surgical question directly: *does this track pass through a vessel*. A vessel is caught by the voxels it fills, at whatever thickness and wherever the track enters it.
 
-One voxel holds one id, so overlaps resolve by write order and vessels are written last. Hiding a structure zeroes its colour, not its data, so a vessel hidden from view still counts in the corridor check.
+One voxel holds one id, so overlaps resolve by write order and vessels are written last. Hiding a structure zeroes its colour. The data stays, so a vessel hidden from view still counts in the corridor check.
 
 The bake depends only on the meshes and the grid, both fixed, so it is stored beside the scan as one gzipped byte per voxel and unpacked at startup.
 
@@ -156,7 +156,7 @@ if (Input.GetMouseButtonDown(0))
 
 Buttons, hover tints and menus all sit downstream of the interactor, and none of them can tell the two apart. `DesktopMode` picks the rig at startup: it starts on the headset whenever an XR loader is present, and falls back to desktop if the display never begins presenting.
 
-Panels carry an inert `RayInteractable` over their whole face, which keeps the ray lit all the way across a panel as you travel between its buttons. On the MPR board that backdrop also carries `MouseGrabExempt`, so a click on the images reads as pointing rather than grabbing.
+Panels carry an inert `RayInteractable` over their whole face, which keeps the ray lit all the way across a panel as you travel between its buttons. On the MPR board that backdrop also carries `MouseGrabExempt`, so the images take a point while the rest of the panel takes a grab.
 
 ## The intensity window
 
@@ -235,11 +235,7 @@ Built-in pipeline, one scene in the build list. Desktop targets Windows x64 and 
 
 ## Technical decisions
 
-**All world-to-voxel maths in one class.** Slice extraction, the oblique reslice and the cut all read `VolumeSampler`. If registration and region labels land later they sample through the same class, so consistency holds by construction.
-
 **Slices sample nearest-neighbour.** A slice is a texture lookup per pixel and the volume is 150 slices deep, so nearest neighbour is fast and honest about the source resolution. Images do go blocky when a panel is pushed close to your face.
-
-**The cut is a bounded box.** It clears only the volume inside the rectangle you are holding, so the opening stays where you point it and the head remains whole around it.
 
 **Structures are labelled voxels.** A label volume answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Both read the same array by index.
 
@@ -247,7 +243,7 @@ Built-in pipeline, one scene in the build list. Desktop targets Windows x64 and 
 
 **Structure colours are chosen against a greyscale base.** The scan spends the whole lightness range on anatomy, so chroma is the only channel left to separate a label from tissue. Gray and white matter border each other everywhere, so they take opposing warm and cool hues while keeping the relationship that distinguishes them on a T1: white matter is the brighter of the two.
 
-**Two colour systems, kept apart.** Panel chrome uses a navy/steel palette. The axial/coronal/sagittal frames use the radiology convention, green/red/blue, and the structure and safety colours are anatomical and status colours, left where a clinician expects to find them.
+**Two colour systems, kept apart.** The axial/coronal/sagittal frames use the radiology convention, green/red/blue, and the structure and safety colours are anatomical and status colours, left where a clinician expects to find them. Panel chrome uses a separate navy/steel palette that never touches those.
 
 ## Repo layout
 
@@ -266,6 +262,8 @@ Assets/NavianChallenge/
       StructureVoxelizer.cs            rasterizes the meshes into the label volume
       StructureToggles.cs              structure visibility
       WindowLevel.cs                   window and level, air always excluded
+      WindowLevelSlider.cs             the two sliders that drive it
+      CorridorSlider.cs                drag slider for the corridor diameter
       VolumeStyle.cs                   transfer function applied at runtime
       AtlasVolumeLoader.cs             builds the MRI volume at runtime
     UI/                               interaction primitives both rigs consume
@@ -274,13 +272,17 @@ Assets/NavianChallenge/
       DragSlider.cs                    drag behaviour shared by the panel sliders
     Desktop/                          only meaningful without a headset
       DesktopMode.cs                   picks the rig at startup
+      DesktopViewer.cs                 desktop camera and on-screen controls
       MousePointer.cs                  screen ray + click, as an ISelector
       MouseGrab.cs                     press and drag panels with the mouse
+      MouseGrabExempt.cs               marks a surface MouseGrab should never pick up
+      PlaneRotateInput.cs              arrow keys angle the cut plane
     XR/                               only meaningful with a headset
       WristMenu.cs                     shows and hides the three tools
       Foveation.cs                     lowers the resolution of the eye buffer's periphery
   Shaders/
     PanelFrame.shader                 SDF rounded frame, stereo instanced
+    TrajectoryLine.shader             unlit line drawn on top of the anatomy
     TrajectoryRay.shader              per-vertex gradient along the track
   Editor/                             one-off scene-building tool, see note below
 Assets/ThirdParty/UnityVolumeRendering/
@@ -300,8 +302,8 @@ Assets/ThirdParty/UnityVolumeRendering/
 ## What I would add next
 
 1. **Click in a slice to move the crosshair.** Cheapest item here and it closes the largest gap; the panels already know their own voxel mapping.
-2. **Offline atlas registration.** Register Harvard-Oxford into IXI025's native grid with ANTsPy or SimpleITK, emit labels on the same affine plus a `regions.json` of names, synonyms and centroids. The label-volume path already exists. Registration stays out of Unity: it is slow, iterative and far better tooled in Python, and the JSON is a seam that lets registration quality improve without touching app code.
-3. **An LLM agent to move the crosshair.** With `regions.json` in place, an agent resolves "show me the left ventricle" against region names, synonyms and descriptions, then moves the crosshair to the matched centroid. The interesting part is robust request understanding, which handles synonyms, typos and compound descriptions a lookup table cannot.
+2. **Offline atlas registration.** Register Harvard-Oxford into IXI025's native grid offline, in Python, with ANTsPy or SimpleITK doing the iterative fitting. The result is labels on the same affine plus a `regions.json` of names, synonyms and centroids: the label-volume path already exists, and the JSON is a seam that lets registration quality improve later without touching app code.
+3. **An LLM agent to move the crosshair.** With `regions.json` in place, an agent resolves "show me the left ventricle" against region names, synonyms and descriptions, then moves the crosshair to the matched centroid. The interesting part is robust request understanding: matching synonyms, typos and compound descriptions against the names and synonyms already in `regions.json`.
 4. **Carry the window through to the 2D panels**, with trilinear sampling, which is what makes slices readable in a clinical viewer.
 5. **Profile the headset build**, then decide between sampling rate, MSAA and texture bit depth against a real number.
 
