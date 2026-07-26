@@ -24,7 +24,7 @@ Run `Synav.exe` on desktop, or sideload `Synav.apk` with `adb install -r Synav.a
 
 ## Why I built it
 
-A scan is three stacks of images and a pile of segmented surfaces, and most viewers make you drive them separately: one slider per axis, a 3D view in its own mode, meshes sitting beside the scan rather than inside it. That works for reading a study. It works badly for planning, because planning is a question about a *point* — what is here, what surrounds it, and can I reach it without crossing something.
+A scan is three stacks of images and a pile of segmented surfaces, and most viewers make you drive them separately: one slider per axis, a 3D view in its own mode, meshes sitting beside the scan rather than inside it. That works for reading a study. It works badly for planning, because planning is a question about a *point*: what is here, what surrounds it, and can I reach it without crossing something.
 
 So the app holds one piece of state: the pose of a plane you pick up and move. Every view is a readout of that single transform, so no two of them can disagree.
 
@@ -108,13 +108,13 @@ The MPR board's fourth panel draws that same 192 x 192 texture, so the 3D cut an
 
 The four segmentation meshes are rasterized into a single label volume on the MRI's own grid, one integer id per voxel, and handed to UnityVolumeRendering as a secondary volume. The structures become part of the scan: they colour the raymarched volume, they tint every 2D slice, and they can be read per voxel.
 
-The mapping needs no calibration. `MeshesRoot` carries the same transform as the volume container, so `VolumeSampler.WorldToUVW` takes a mesh vertex straight to the voxel it falls in — every vein vertex lands in a vein voxel.
+The mapping needs no calibration. `MeshesRoot` carries the same transform as the volume container, so `VolumeSampler.WorldToUVW` takes a mesh vertex straight to the voxel it falls in. Every vein vertex lands in a vein voxel.
 
 Reading a structure as voxels is what lets the trajectory check answer the surgical question directly: *does this track pass through a vessel*, rather than *how far is the nearest point on a vessel's surface*. The two diverge whenever a vessel is thicker than the corridor being tested.
 
 One voxel holds one id, so overlaps resolve by write order and vessels are written last. Hiding a structure zeroes its colour, not its data, so a vessel hidden from view still counts in the corridor check.
 
-The bake depends only on the meshes and the grid, both fixed, so it is stored beside the scan as a gzipped byte per voxel — 9.8M voxels compressing to 353 KB, unpacked at startup.
+The bake depends only on the meshes and the grid, both fixed, so it is stored beside the scan as a gzipped byte per voxel. 9.8M voxels compress to 353 KB, unpacked at startup.
 
 ### 5. Trajectory planning
 
@@ -154,7 +154,7 @@ if (Input.GetMouseButtonDown(0))
     WhenSelected?.Invoke();
 ```
 
-Everything downstream — buttons, hover tints, menus — cannot tell them apart. `DesktopMode` picks the rig at startup: it starts on the headset whenever an XR loader is present, and falls back to desktop if the display never begins presenting.
+Buttons, hover tints and menus all sit downstream of the interactor, and none of them can tell the two apart. `DesktopMode` picks the rig at startup: it starts on the headset whenever an XR loader is present, and falls back to desktop if the display never begins presenting.
 
 Panels carry an inert `RayInteractable` over their whole face, so the ray stays lit while travelling between buttons instead of blinking off over the gaps. On the MPR board that backdrop also carries `MouseGrabExempt`, so a click on the images reads as pointing rather than grabbing.
 
@@ -192,7 +192,7 @@ extent       240 x 240 x 180 mm
 format       NIfTI-1 (.nii.gz), single channel, RHalf on the GPU
 ```
 
-Four segmentation meshes ship alongside it — skin, gray matter, white matter, veins — already in the scan's frame. `StructureVoxelizer` rasterizes them into one label field on the same grid:
+Four segmentation meshes ship alongside it, already in the scan's frame: skin, gray matter, white matter, veins. `StructureVoxelizer` rasterizes them into one label field on the same grid:
 
 ```
 id 0  background      id 2  gray matter
@@ -200,7 +200,7 @@ id 1  veins           id 3  white matter
                       id 4  skin
 ```
 
-One byte per voxel, 9,830,400 voxels, gzipped to 353 KB. Overlaps resolve by write order, vessels last, so a voxel that is both vein and white matter reads as vein — the conservative answer for a corridor check.
+One byte per voxel, 9,830,400 voxels, gzipped to 353 KB. Overlaps resolve by write order, vessels last, so a voxel that is both vein and white matter reads as vein, the conservative answer for a corridor check.
 
 ## Running it
 
@@ -227,7 +227,7 @@ Start by dragging the section plane into the head; the oblique panel is black un
 
 ### Quest
 
-Turn your left palm towards your face for the wrist menu, which shows and hides the three tools. Buttons take a poke or a point and pinch. Panels are grabbed by their frame; the images inside take a point. Link works too — connect the headset, start Link, press Play in the editor.
+Turn your left palm towards your face for the wrist menu, which shows and hides the three tools. Buttons take a poke or a point and pinch. Panels are grabbed by their frame; the images inside take a point. Link works too: connect the headset, start Link, then press Play in the editor.
 
 ### Building it
 
@@ -243,7 +243,7 @@ CPU cost of the planning work, against a 13.9 ms frame at 72 Hz:
 | Full re-plan: depth, corridor, tube | 470 µs | 3.4% |
 | Label bake, unpacked from disk | 353 KB | one-off at startup |
 
-The GPU side is the real constraint — raymarching is fragment-bound and stereo pays for it twice — and it has not been profiled on device, so there are no framerate figures here to quote.
+The GPU side is the real constraint, since raymarching is fragment-bound and stereo pays for it twice. It has not been profiled on device, so there are no framerate figures here to quote.
 
 ## Technical decisions
 
@@ -317,7 +317,7 @@ Assets/ThirdParty/UnityVolumeRendering/
 - **The window does not reach the 2D slices.** The volume honours it; the four images still map intensity straight to grey across the scan's full range.
 - **Reslicing runs on the main thread.** A 192 x 192 oblique reslice recomputes on every plane move. It does not scale to a larger scan or a bigger panel.
 - **The GPU budget is unprofiled on device.** The optimisations in the headset build are the standard ones for a fragment-bound load, chosen without a trace to point at.
-- **Structures render at the scan's resolution**, so edges are 0.94 mm steps. Label ids cannot be interpolated — a value halfway between two ids is a third structure — so the blockiness is the true resolution of the data.
+- **Structures render at the scan's resolution**, so edges are 0.94 mm steps. Label ids cannot be interpolated: a value halfway between two ids is a third structure. The blockiness is the true resolution of the data.
 
 ## What I would add next
 
