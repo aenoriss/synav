@@ -78,7 +78,7 @@ Multiply by the grid dimensions and you have a voxel index. Keeping that in one 
 
 `MprScreens` fills the axial, coronal and sagittal panels from the voxel under the crosshair. The dataset is 256 x 256 x 150, so axial comes out 256 x 256 and coronal and sagittal come out 256 x 150.
 
-The panels are sized by millimetres, not by voxel count. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so the scan is 240 x 240 x 180 mm and the coronal and sagittal panels are 4:3 while axial is square. Sizing them 256:150 instead squashed the head by about 22%.
+The panels are sized by millimetres. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so the scan is 240 x 240 x 180 mm and the coronal and sagittal panels are 4:3 while axial is square. Sizing them 256:150 instead squashed the head by about 22%.
 
 Voxel intensity maps straight to grey, tinted toward a structure's colour where one is labelled. Tinting rather than replacing keeps the intensities readable underneath, which is the point of looking at a slice. The transfer function only shapes the 3D volume: the render is an interpretation, the 2D slices are the evidence.
 
@@ -86,7 +86,7 @@ Each panel prints the slice it is showing, one-based out of the stack depth, the
 
 ### 3. The oblique cut
 
-The section plane carries a UnityVolumeRendering `CutoutBox` sized to its own rectangle, not a `CrossSectionPlane`. A plane cuts an infinite half-space, so anything on the far side of the volume disappears too. A box only removes what sits inside the rectangle you are holding, which reads like a window into the head instead of half a head going missing.
+The section plane carries a UnityVolumeRendering `CutoutBox` sized to its own rectangle. The alternative, a `CrossSectionPlane`, cuts an infinite half-space, so anything on the far side of the volume disappears too. A box only removes what sits inside the rectangle you are holding, which reads like a window into the head instead of half a head going missing.
 
 The same plane is swept to produce the oblique image, stepping through the volume with the matrix from `VolumeSampler`:
 
@@ -97,7 +97,7 @@ Vector3 acrossStep = toUVW.MultiplyVector(new Vector3(step, 0f, 0f));
 Vector3 downStep   = toUVW.MultiplyVector(new Vector3(0f, step, 0f));
 ```
 
-The MPR board's fourth panel is that same texture, not a second sample of the volume, so the 3D cut and the 2D oblique slice can never show something different from each other.
+The MPR board's fourth panel draws that same texture, so the 3D cut and the 2D oblique slice can never show something different from each other.
 
 The cutout box is also moved to whichever side of the plane you are standing on each frame, so the open face follows you around.
 
@@ -117,7 +117,7 @@ The menu is a rail of section tabs on the left with the selected section's conte
 
 ### 5. Trajectory planning
 
-`TrajectoryPlanner` captures an entry and a target point from the crosshair on two button presses, draws a line between them, and reports the depth in real patient millimetres through `VolumeSampler.PatientDistanceMm`. Patient millimetres, not Unity metres, because the number that matters is how far the instrument actually travels through the patient.
+`TrajectoryPlanner` captures an entry and a target point from the crosshair on two button presses, draws a line between them, and reports the depth in real patient millimetres through `VolumeSampler.PatientDistanceMm`, because the number that matters is how far the instrument actually travels through the patient.
 
 The two markers are children of the volume in the scene. Grab the head and turn it, and the markers, the line and the readout move with it, the same as the meshes and the MRI do. The depth and the vein warning stay correct too: both are patient-space measurements, so they do not change just because the head was picked up and turned.
 
@@ -259,19 +259,19 @@ Panels, menus and their frames are authored as real objects in the scene. Script
 
 **All world to voxel maths in one class.** Slice extraction, the oblique reslice and the cut all read `VolumeSampler`. When registration and region labels land later, they sample the label volume through the same class and everything stays consistent by construction.
 
-**Nearest-neighbour sampling, not trilinear.** A slice is a texture lookup per pixel and the volume is only 150 slices deep, so nearest neighbour is fast and honest about the source resolution. It does mean the images go blocky when you push a panel close to your face.
+**Slices sample nearest-neighbour.** A slice is a texture lookup per pixel and the volume is only 150 slices deep, so nearest neighbour is fast and honest about the source resolution. It does mean the images go blocky when you push a panel close to your face.
 
-**A bounded cutout box, not an infinite plane.** An infinite plane takes the far side of the head with it, and cannot show a cut that affects only the region you are pointing at.
+**The cut is a bounded box.** An infinite plane takes the far side of the head with it, and cannot show a cut that affects only the region you are pointing at.
 
-**The headset build runs on the Quest itself, not only over Link.** Volume rendering is raymarching: fragment-bound, taking many 3D texture samples per pixel, and stereo doubles the views while raising the framerate target. A desktop GPU over Link absorbs that; a mobile GPU has to be handed less to shade. So the headset build spends its budget on fragments rather than on geometry. The intensity window excludes air, and a sample below the floor stops after one texture read instead of four, which takes most of the volume's bounding box off the expensive path. Foveated rendering shades the periphery of each eye buffer at lower resolution, away from where a slice is being read. The eye buffer is a fixed size rather than one resized against a moving GPU budget, since a buffer that rescales every frame reads as judder more readily than a steady lower framerate does.
+**The headset build runs on the Quest itself.** Volume rendering is raymarching: fragment-bound, taking many 3D texture samples per pixel, and stereo doubles the views while raising the framerate target. A desktop GPU over Link absorbs that; a mobile GPU has to be handed less to shade. So the headset build spends its budget on fragments rather than on geometry. The intensity window excludes air, and a sample below the floor stops after one texture read instead of four, which takes most of the volume's bounding box off the expensive path. Foveated rendering shades the periphery of each eye buffer at lower resolution, away from where a slice is being read. The eye buffer is a fixed size rather than one resized against a moving GPU budget, since a buffer that rescales every frame reads as judder more readily than a steady lower framerate does.
 
 **The section plane is the only handle.** There is no separate crosshair object to lose. Moving the thing that cuts is the same gesture as moving the thing that measures.
 
 **Explicit sorting orders on the transparent panels.** Unity sorts transparent geometry by distance to camera, which is unreliable when a panel's backing, image, frame and text sit almost on top of each other. Each layer's draw order is set by hand instead of left to the default.
 
-**The corridor is measured in patient millimetres, not world units.** IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so a radius taken in world units is wrong by that anisotropy in whichever direction the nearest vessel happens to lie. Converting through `VolumeSampler` sidesteps it instead of correcting for it afterwards.
+**The corridor is measured in patient millimetres.** IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so a radius taken in world units is wrong by that anisotropy in whichever direction the nearest vessel happens to lie. Converting through `VolumeSampler` sidesteps it instead of correcting for it afterwards.
 
-**Structures are labelled voxels, not meshes.** A label volume on the scan's own grid answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Surfaces answer a different question and have to be intersected to get there.
+**Structures are labelled voxels.** A label volume on the scan's own grid answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Surfaces answer a different question and have to be intersected to get there.
 
 **The label volume is baked to an artifact.** Its inputs are fixed, so deriving it at startup would repeat the same work forever, and doing it in one frame stalls long enough for an XR compositor to drop the app. It is rasterized once and stored; startup unpacks 353 KB.
 
