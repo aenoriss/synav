@@ -1138,7 +1138,7 @@ Transform:
   m_GameObject: {fileID: 86879102}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.030400008, y: -0.000000027939677, z: -0.0039999755}
+  m_LocalPosition: {x: -0.046, y: -0.000000027939677, z: -0.0039999755}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1154,7 +1154,7 @@ TextMesh:
   m_GameObject: {fileID: 86879102}
   m_Text: Plan
   m_OffsetZ: 0
-  m_CharacterSize: 0.0034
+  m_CharacterSize: 0.0038
   m_LineSpacing: 1
   m_Anchor: 3
   m_Alignment: 0
@@ -1286,7 +1286,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.105, y: 0.038, z: 1}
+  m_LocalScale: {x: 0.125, y: 0.05, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1690609818}
@@ -3324,7 +3324,7 @@ TextMesh:
   m_GameObject: {fileID: 323403226}
   m_Text: Filter
   m_OffsetZ: 0
-  m_CharacterSize: 0.0034
+  m_CharacterSize: 0.0038
   m_LineSpacing: 1
   m_Anchor: 3
   m_Alignment: 0
@@ -3394,7 +3394,7 @@ Transform:
   m_GameObject: {fileID: 323403226}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.031700015, y: -0.000000059604645, z: -0.00399998}
+  m_LocalPosition: {x: -0.046, y: -0.000000059604645, z: -0.00399998}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -5540,7 +5540,7 @@ Transform:
   m_GameObject: {fileID: 611247102}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.030400008, y: -0.000000027939677, z: -0.0039999755}
+  m_LocalPosition: {x: -0.046, y: -0.000000027939677, z: -0.0039999755}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -5556,7 +5556,7 @@ TextMesh:
   m_GameObject: {fileID: 611247102}
   m_Text: Window
   m_OffsetZ: 0
-  m_CharacterSize: 0.0034
+  m_CharacterSize: 0.0038
   m_LineSpacing: 1
   m_Anchor: 3
   m_Alignment: 0
@@ -9276,7 +9276,7 @@ Transform:
   m_GameObject: {fileID: 1063737318}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.136, y: -0.016499998, z: 0}
+  m_LocalPosition: {x: -0.136, y: -0.043, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -11033,7 +11033,7 @@ Transform:
   m_GameObject: {fileID: 1153044863}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.1355, y: 0.0765, z: 0}
+  m_LocalPosition: {x: -0.1355, y: 0.075, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -11858,7 +11858,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.Surfaces.BoundsClipper
   _position: {x: 0, y: 0, z: 0}
-  _size: {x: 0.105, y: 0.038, z: 0.105}
+  _size: {x: 0.12499997, y: 0.049999952, z: 0.105}
 --- !u!114 &1279424756
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13916,7 +13916,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.105, y: 0.038, z: 1}
+  m_LocalScale: {x: 0.125, y: 0.05, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1153044865}
@@ -14098,7 +14098,7 @@ Transform:
   m_GameObject: {fileID: 1690609817}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.136, y: 0.03, z: 0}
+  m_LocalPosition: {x: -0.136, y: 0.016, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -15148,7 +15148,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.Surfaces.BoundsClipper
   _position: {x: 0, y: 0, z: 0}
-  _size: {x: 0.105, y: 0.038, z: 0.105}
+  _size: {x: 0.12499998, y: 0.05000007, z: 0.105}
 --- !u!114 &1833023591
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -15373,7 +15373,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.105, y: 0.038, z: 1}
+  m_LocalScale: {x: 0.125, y: 0.05, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1063737319}
@@ -17052,7 +17052,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.Surfaces.BoundsClipper
   _position: {x: 0, y: 0, z: 0}
-  _size: {x: 0.105, y: 0.038, z: 0.105}
+  _size: {x: 0.12499998, y: 0.05000007, z: 0.105}
 --- !u!114 &2116035772
 MonoBehaviour:
   m_ObjectHideFlags: 0
