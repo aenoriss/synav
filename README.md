@@ -77,13 +77,13 @@ uvw = local + Vector3.one * 0.5f;          // 0..1 across the volume
 voxel = Vector3Int.FloorToInt(uvw * dims); // dims = (256, 256, 150)
 ```
 
-Keeping that in one class is what stops the slices, the cut and the volume drifting apart. It is also where the labels plug in: an intensity lookup and a label lookup at the same world position always land on the same voxel.
+Keeping that in one class is what holds the slices, the cut and the volume on the same coordinates. It is also where the labels plug in: an intensity lookup and a label lookup at the same world position always land on the same voxel.
 
 ### 2. The three axis slices
 
 `MprScreens` fills the axial, coronal and sagittal panels from the voxel under the crosshair. The dataset is 256 x 256 x 150, so axial comes out 256 x 256 and the other two 256 x 150.
 
-Panels are sized in millimetres. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so the scan is 240 x 240 x 180 mm and coronal and sagittal are 4:3 while axial is square. Sizing them 256:150 instead squashes the head by about 22%.
+Panels are sized in millimetres. IXI025 voxels are 0.9375 x 0.9375 x 1.2 mm, so the scan measures 240 x 240 x 180 mm: coronal and sagittal come out 4:3, axial square, and the head keeps its proportions in every view.
 
 Intensity maps straight to grey, tinted toward a structure's colour where one is labelled. Tinting keeps the underlying intensities readable, which is the point of looking at a slice. The transfer function only shapes the 3D volume: the render is an interpretation, the slices are the evidence.
 
@@ -91,7 +91,7 @@ Each panel prints its slice index the way a clinical viewer prints an image numb
 
 ### 3. The oblique cut
 
-The section plane carries a UnityVolumeRendering `CutoutBox` sized to its own rectangle. A `CrossSectionPlane` cuts an infinite half-space, taking the far side of the head with it; a box removes only what sits inside the rectangle you are holding, which reads like a window into the head.
+The section plane carries a UnityVolumeRendering `CutoutBox` sized to its own rectangle. The box clears the volume inside that rectangle and leaves the rest of the head standing, so the cut reads as a window opened into it.
 
 The same plane is swept to produce the oblique image, stepping through the volume with the matrix from `VolumeSampler`:
 
@@ -110,7 +110,7 @@ The four segmentation meshes are rasterized into a single label volume on the MR
 
 The mapping needs no calibration. `MeshesRoot` carries the same transform as the volume container, so `VolumeSampler.WorldToUVW` takes a mesh vertex straight to the voxel it falls in. Every vein vertex lands in a vein voxel.
 
-Reading a structure as voxels is what lets the trajectory check answer the surgical question directly: *does this track pass through a vessel*, rather than *how far is the nearest point on a vessel's surface*. The two diverge whenever a vessel is thicker than the corridor being tested.
+Reading a structure as voxels lets the trajectory check answer the surgical question directly: *does this track pass through a vessel*. A vessel is caught by the voxels it fills, at whatever thickness and wherever the track enters it.
 
 One voxel holds one id, so overlaps resolve by write order and vessels are written last. Hiding a structure zeroes its colour, not its data, so a vessel hidden from view still counts in the corridor check.
 
@@ -118,7 +118,7 @@ The bake depends only on the meshes and the grid, both fixed, so it is stored be
 
 ### 5. Trajectory planning
 
-`TrajectoryPlanner` captures entry and target from the crosshair on two button presses and draws a line between them. Depth comes back in patient millimetres through `VolumeSampler.PatientDistanceMm`: the number that matters is how far an instrument actually travels through the patient, not how long the line is in the scene.
+`TrajectoryPlanner` captures entry and target from the crosshair on two button presses and draws a line between them. Depth comes back in patient millimetres through `VolumeSampler.PatientDistanceMm`, the distance an instrument would travel through the patient.
 
 Both markers are children of the volume, so grabbing the head and turning it carries the markers, the line and the readout with it. Depth and the vein warning are patient-space measurements and do not change because the head was picked up.
 
@@ -156,7 +156,7 @@ if (Input.GetMouseButtonDown(0))
 
 Buttons, hover tints and menus all sit downstream of the interactor, and none of them can tell the two apart. `DesktopMode` picks the rig at startup: it starts on the headset whenever an XR loader is present, and falls back to desktop if the display never begins presenting.
 
-Panels carry an inert `RayInteractable` over their whole face, so the ray stays lit while travelling between buttons instead of blinking off over the gaps. On the MPR board that backdrop also carries `MouseGrabExempt`, so a click on the images reads as pointing rather than grabbing.
+Panels carry an inert `RayInteractable` over their whole face, which keeps the ray lit all the way across a panel as you travel between its buttons. On the MPR board that backdrop also carries `MouseGrabExempt`, so a click on the images reads as pointing rather than grabbing.
 
 ## The intensity window
 
@@ -239,15 +239,15 @@ Built-in pipeline, one scene in the build list. Desktop targets Windows x64 and 
 
 **Slices sample nearest-neighbour.** A slice is a texture lookup per pixel and the volume is 150 slices deep, so nearest neighbour is fast and honest about the source resolution. Images do go blocky when a panel is pushed close to your face.
 
-**The cut is a bounded box.** An infinite plane takes the far side of the head with it and cannot show a cut affecting only the region you are pointing at.
+**The cut is a bounded box.** It clears only the volume inside the rectangle you are holding, so the opening stays where you point it and the head remains whole around it.
 
-**Structures are labelled voxels.** A label volume answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Surfaces answer a different question and have to be intersected to get there.
+**Structures are labelled voxels.** A label volume answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Both read the same array by index.
 
-**The corridor is measured in patient millimetres.** Voxels are anisotropic at 0.9375 x 0.9375 x 1.2 mm, so a radius in world units is wrong by that anisotropy in whichever direction the nearest vessel happens to lie.
+**The corridor is measured in patient millimetres.** Voxels are anisotropic at 0.9375 x 0.9375 x 1.2 mm, so the radius converts through the voxel spacing and covers the same true distance whichever way the track runs.
 
 **Structure colours are chosen against a greyscale base.** The scan spends the whole lightness range on anatomy, so chroma is the only channel left to separate a label from tissue. Gray and white matter border each other everywhere, so they take opposing warm and cool hues while keeping the relationship that distinguishes them on a T1: white matter is the brighter of the two.
 
-**Two colour systems, kept apart.** Panel chrome uses a navy/steel palette. The axial/coronal/sagittal frames use the radiology convention, green/red/blue, and the structure and safety colours are anatomical and status colours. Branding the medical conventions would have made them wrong.
+**Two colour systems, kept apart.** Panel chrome uses a navy/steel palette. The axial/coronal/sagittal frames use the radiology convention, green/red/blue, and the structure and safety colours are anatomical and status colours, left where a clinician expects to find them.
 
 ## Repo layout
 
