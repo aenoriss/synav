@@ -114,7 +114,7 @@ Reading a structure as voxels is what lets the trajectory check answer the surgi
 
 One voxel holds one id, so overlaps resolve by write order and vessels are written last. Hiding a structure zeroes its colour, not its data, so a vessel hidden from view still counts in the corridor check.
 
-The bake depends only on the meshes and the grid, both fixed, so it is stored beside the scan as a gzipped byte per voxel. 9.8M voxels compress to 353 KB, unpacked at startup.
+The bake depends only on the meshes and the grid, both fixed, so it is stored beside the scan as one gzipped byte per voxel and unpacked at startup.
 
 ### 5. Trajectory planning
 
@@ -162,7 +162,7 @@ Panels carry an inert `RayInteractable` over their whole face, so the ray stays 
 
 Level and width choose which intensities are drawn, the control a radiologist reaches for first. Narrowing the window raises contrast across whatever survives inside it; sliding the level walks that band up and down the tissue types.
 
-Air stays excluded underneath both sliders. It is the darkest thing in the scan and there is nothing in it to see, yet it fills most of the volume's bounding box. A sample below the floor stops after one texture read instead of four.
+Air stays excluded underneath both sliders, whatever they are set to. It is the darkest thing in the scan and there is nothing in it to see.
 
 ```csharp
 float half = width * 0.5f;
@@ -171,7 +171,7 @@ VisibleMax = Mathf.Max(VisibleMin + 0.01f, Mathf.Min(1f, level + half));
 volume.SetVisibilityWindow(VisibleMin, VisibleMax);
 ```
 
-At the default full width, the floor alone sends about 58% of samples down that cheap path. It costs 0.4% of vein voxels, vessels sitting at intensities below the floor.
+The floor costs 0.4% of vein voxels, vessels sitting at intensities below it.
 
 ## Tech stack
 
@@ -233,18 +233,6 @@ Turn your left palm towards your face for the wrist menu, which shows and hides 
 
 Built-in pipeline, one scene in the build list. Desktop targets Windows x64 and opens windowed at 1600 x 900. The headset build targets Android with IL2CPP, ARM64 and Vulkan. The two are written side by side and share nothing but the scene.
 
-## Measured
-
-CPU cost of the planning work, against a 13.9 ms frame at 72 Hz:
-
-| Step | Cost | Share of frame |
-| - | - | - |
-| Re-project the entry onto the scalp | 35 µs | 0.25% |
-| Full re-plan: depth, corridor, tube | 470 µs | 3.4% |
-| Label bake, unpacked from disk | 353 KB | one-off at startup |
-
-The GPU side is the real constraint, since raymarching is fragment-bound and stereo pays for it twice. It has not been profiled on device, so there are no framerate figures here to quote.
-
 ## Technical decisions
 
 **All world-to-voxel maths in one class.** Slice extraction, the oblique reslice and the cut all read `VolumeSampler`. If registration and region labels land later they sample through the same class, so consistency holds by construction.
@@ -255,7 +243,7 @@ The GPU side is the real constraint, since raymarching is fragment-bound and ste
 
 **Structures are labelled voxels.** A label volume answers "what is at this point" for any point, which is what both the corridor check and the slice tinting need. Surfaces answer a different question and have to be intersected to get there.
 
-**The label volume is baked to an artifact.** Its inputs are fixed, and rasterizing 347k triangles in one frame stalls long enough for an XR compositor to drop the app.
+**The label volume is baked to an artifact.** Its inputs are fixed, and rasterizing the meshes in one frame stalls long enough for an XR compositor to drop the app.
 
 **The corridor is measured in patient millimetres.** Voxels are anisotropic at 0.9375 x 0.9375 x 1.2 mm, so a radius in world units is wrong by that anisotropy in whichever direction the nearest vessel happens to lie.
 
