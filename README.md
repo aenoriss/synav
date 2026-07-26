@@ -1,3 +1,5 @@
+<img src="docs/images/header.webp" alt="synav" width="100%">
+
 # Brain MRI section explorer
 
 A crosshair-driven explorer for a T1 brain MRI. Move one plane through the head and the axial, coronal and sagittal slices, the oblique cut and the 3D volume all read the same point.
@@ -8,6 +10,13 @@ One Unity scene ships as a desktop executable driven by mouse and keyboard, and 
 ![Built-in RP](https://img.shields.io/badge/Pipeline-Built--in-blue)
 ![Windows](https://img.shields.io/badge/Build-Windows%20x64-informational)
 ![Quest](https://img.shields.io/badge/Build-Quest%20(Android%20ARM64)-informational)
+
+## Demo
+
+| Walkthrough |
+| - |
+| [![Synav demo](https://img.youtube.com/vi/JpZMFiNn8EQ/0.jpg)](https://youtu.be/JpZMFiNn8EQ) |
+| Slices, structures, trajectory planning and the intensity window, on a Quest 3S |
 
 ## Why I built it this way
 
