@@ -48,3 +48,9 @@ Thumbs.db
 # Unity crash-recovery scene dumps
 /[Aa]ssets/_Recovery/
 /[Aa]ssets/_Recovery.meta
+
+# Meta XR performance-tooling scratch
+/[Aa]ssets/Resources/PerformanceTestRun*.json*
+
+# Android NDK/CMake build intermediates
+/.utmp/
