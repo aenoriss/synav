@@ -327,12 +327,8 @@ Assets/ThirdParty/UnityVolumeRendering/
 4. **Carry the window through to the 2D panels**, with trilinear sampling, which is what makes slices readable in a clinical viewer.
 5. **Profile the headset build**, then decide between sampling rate, MSAA and texture bit depth against a real number.
 
-## References
+## Credits
 
-- Levoy M (1988). Display of surfaces from volume data. *IEEE Computer Graphics and Applications* 8(3): 29-37
-- Drebin RA, Carpenter L, Hanrahan P (1988). Volume rendering. *SIGGRAPH '88*: 65-74
-- Krüger J, Westermann R (2003). Acceleration techniques for GPU-based volume rendering. *IEEE Visualization*: 287-292
-- Engel K, Hadwiger M, Kniss J, Rezk-Salama C, Weiskopf D (2006). *Real-Time Volume Graphics*. AK Peters
 - [IXI dataset](https://brain-development.org/ixi-dataset/), Imperial College London
 - [UnityVolumeRendering](https://github.com/mlavik1/UnityVolumeRendering), Matias Lavik
 
